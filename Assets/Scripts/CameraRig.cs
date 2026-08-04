@@ -15,7 +15,7 @@ namespace DK
         public float EdgePanMargin = 14f;
         public float ZoomSpeed = 12f;
         public float MinDistance = 8f;
-        public float MaxDistance = 40f;
+        public float MaxDistance = 30f;
         public bool EdgePanEnabled = true;
 
         Camera _camera;
