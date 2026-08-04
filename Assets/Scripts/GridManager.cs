@@ -38,7 +38,7 @@ namespace DK
         static readonly Color GoldColor = new Color(0.92f, 0.74f, 0.16f);
         static readonly Color MarkedRockColor = new Color(0.85f, 0.38f, 0.12f);
         static readonly Color MarkedGoldColor = new Color(1.00f, 0.55f, 0.10f);
-        static readonly Color FloorColor = new Color(0.10f, 0.09f, 0.09f);
+        static readonly Color FloorColor = new Color(0.19f, 0.17f, 0.16f);
 
         /// <summary>Raised whenever a tile's state or dig-mark changes (x, z).</summary>
         public event Action<int, int> TileChanged;

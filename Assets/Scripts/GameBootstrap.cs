@@ -94,7 +94,8 @@ namespace DK
             light.shadows = LightShadows.Soft;
 
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.28f, 0.28f, 0.34f);
+            // Enough ambient that shadowed floor keeps its shape instead of crushing to black.
+            RenderSettings.ambientLight = new Color(0.36f, 0.36f, 0.42f);
         }
 
         ImpAI CreateImp()
