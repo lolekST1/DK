@@ -57,6 +57,7 @@ Assets/Scripts/
 Assets/Editor/
   ProjectAutoSetup.cs Text serialization, URP asset, scene in build settings
   BuildWebGL.cs       WebGL build entry point
+Assets/Settings/      URP pipeline and renderer assets, created on first Editor load
 Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 ```
 
@@ -77,9 +78,10 @@ one at floor level — so there is not a single collider in the scene.
 load if the package is present. `MaterialLibrary` picks its shader from whichever pipeline is
 actually active, so the prototype also renders correctly on Built-in if URP setup is skipped.
 
-**TextMeshPro fallback.** The HUD uses TextMeshPro, but falls back to legacy uGUI text when
-the project has no TMP font asset yet (TMP Essential Resources not imported), so a fresh
-clone always shows the gold counter.
+**TextMeshPro fallback.** TMP Essential Resources are committed, so the HUD normally uses
+TextMeshPro. Reading `TMP_Settings` throws outright in a project that has never imported
+them, so the availability check is defensive and drops to legacy uGUI text, then to IMGUI —
+the gold counter shows up regardless of what a clone is missing.
 
 ## Headless smoke test
 

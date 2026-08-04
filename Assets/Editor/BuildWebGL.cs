@@ -66,7 +66,9 @@ namespace DK.EditorTools
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
             PlayerSettings.WebGL.decompressionFallback = false;
             PlayerSettings.WebGL.dataCaching = true;
-            PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
+            // Keeping thrown exceptions costs a little size but means a misbehaving build
+            // reports something in the browser console instead of failing silently.
+            PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
             PlayerSettings.WebGL.template = "APPLICATION:Default";
             PlayerSettings.runInBackground = true;
 
