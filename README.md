@@ -5,7 +5,7 @@ to it, digs it out, gold seams pay out. No combat, no rooms, one creature.
 
 ## Running it
 
-1. Open the folder in Unity Hub with **Unity 6.3 LTS (6000.3.x)**. First open resolves
+1. Open the folder in Unity Hub with **Unity 6.5 (6000.5.x)**. First open resolves
    packages and imports assets, which takes a couple of minutes.
 2. Open `Assets/Scenes/Bootstrap.unity`.
 3. Press Play.
