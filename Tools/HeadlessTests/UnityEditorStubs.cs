@@ -13,6 +13,11 @@ namespace UnityEditor
         public static string externalVersionControl;
     }
 
+    public static class VersionControlSettings
+    {
+        public static string mode;
+    }
+
     public static class EditorApplication
     {
         public delegate void CallbackFunction();

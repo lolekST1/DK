@@ -4,12 +4,13 @@ namespace DK
 {
     /// <summary>
     /// Fixed-angle strategy camera: WASD/arrows or screen-edge to pan, wheel to zoom,
-    /// pivot clamped to the grid so you cannot lose the dungeon off-screen.
+    /// pivot clamped to the grid so you cannot lose the dungeon off-screen. Axis-aligned by
+    /// default -- a yawed rig turns the square grid into a diamond that wastes screen space.
     /// </summary>
     public class CameraRig : MonoBehaviour
     {
         public float PitchDegrees = 45f;
-        public float YawDegrees = 45f;
+        public float YawDegrees = 0f;
         public float PanSpeed = 12f;
         public float EdgePanMargin = 14f;
         public float ZoomSpeed = 12f;

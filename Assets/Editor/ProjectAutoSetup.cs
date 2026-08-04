@@ -46,8 +46,9 @@ namespace DK.EditorTools
             if (EditorSettings.serializationMode != SerializationMode.ForceText)
                 EditorSettings.serializationMode = SerializationMode.ForceText;
 
-            if (EditorSettings.externalVersionControl != "Visible Meta Files")
-                EditorSettings.externalVersionControl = "Visible Meta Files";
+            // EditorSettings.externalVersionControl is obsolete; VersionControlSettings owns this now.
+            if (VersionControlSettings.mode != "Visible Meta Files")
+                VersionControlSettings.mode = "Visible Meta Files";
         }
 
         // ---------------------------------------------------------------- scene
