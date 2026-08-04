@@ -85,6 +85,17 @@ namespace UnityEngine
         public static bool Approximately(float a, float b) => a == b;
     }
 
+    public struct Rect
+    {
+        public Rect(float x, float y, float width, float height) { }
+    }
+
+    public static class GUI
+    {
+        public static Color color;
+        public static void Label(Rect rect, string text) { }
+    }
+
     public struct Ray
     {
         public Vector3 GetPoint(float d) => default;
@@ -327,7 +338,11 @@ namespace TMPro
     using UnityEngine;
     public enum TextAlignmentOptions { TopLeft, Center }
     public class TMP_FontAsset : ScriptableObject { }
-    public static class TMP_Settings { public static TMP_FontAsset defaultFontAsset => null; }
+    public class TMP_Settings : ScriptableObject
+    {
+        public static TMP_Settings instance => null;
+        public static TMP_FontAsset defaultFontAsset => null;
+    }
     public class TextMeshProUGUI : UnityEngine.UI.Graphic
     {
         public float fontSize;

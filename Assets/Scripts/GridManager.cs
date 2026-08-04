@@ -34,11 +34,11 @@ namespace DK
         Material _blockMaterial;
         Material _floorMaterial;
 
-        static readonly Color RockColor = new Color(0.42f, 0.40f, 0.38f);
+        static readonly Color RockColor = new Color(0.56f, 0.53f, 0.48f);
         static readonly Color GoldColor = new Color(0.92f, 0.74f, 0.16f);
         static readonly Color MarkedRockColor = new Color(0.85f, 0.38f, 0.12f);
         static readonly Color MarkedGoldColor = new Color(1.00f, 0.55f, 0.10f);
-        static readonly Color FloorColor = new Color(0.20f, 0.18f, 0.17f);
+        static readonly Color FloorColor = new Color(0.10f, 0.09f, 0.09f);
 
         /// <summary>Raised whenever a tile's state or dig-mark changes (x, z).</summary>
         public event Action<int, int> TileChanged;

@@ -5,25 +5,33 @@ using UnityEngine.UI;
 namespace DK
 {
     /// <summary>
-    /// Builds the on-screen gold counter at runtime: Canvas + TextMeshPro.
-    /// If the project has no TMP font asset yet (TMP Essential Resources not imported),
-    /// it falls back to legacy uGUI text so a fresh clone still shows the counter.
+    /// Builds the on-screen gold counter at runtime. Prefers TextMeshPro, drops to legacy
+    /// uGUI text when the project has no TMP font asset, and finally to IMGUI when even the
+    /// built-in font is unavailable — the counter is an acceptance criterion, so it must
+    /// survive a project that has imported nothing.
     /// </summary>
     public class GoldHud : MonoBehaviour
     {
+        enum HudMode { TextMeshPro, LegacyText, ImGui }
+
         ResourceManager _resources;
+        HudMode _mode;
         TextMeshProUGUI _tmpLabel;
         Text _legacyLabel;
+        string _goldText = "Gold: 0";
 
         const string Hint = "LMB drag: mark for digging   RMB: cancel   WASD / screen edge: pan   Wheel: zoom";
 
         public void Configure(ResourceManager resources)
         {
             _resources = resources;
+            _mode = ResolveMode();
 
-            var canvas = BuildCanvas();
-            BuildLabel(canvas, out _tmpLabel, out _legacyLabel);
-            BuildHint(canvas);
+            if (_mode != HudMode.ImGui)
+            {
+                var canvas = BuildCanvas();
+                BuildLabels(canvas);
+            }
 
             _resources.GoldChanged += OnGoldChanged;
             OnGoldChanged(_resources.Gold);
@@ -36,9 +44,33 @@ namespace DK
 
         void OnGoldChanged(int gold)
         {
-            string text = $"Gold: {gold}";
-            if (_tmpLabel != null) _tmpLabel.text = text;
-            if (_legacyLabel != null) _legacyLabel.text = text;
+            _goldText = $"Gold: {gold}";
+            if (_tmpLabel != null) _tmpLabel.text = _goldText;
+            if (_legacyLabel != null) _legacyLabel.text = _goldText;
+        }
+
+        void OnGUI()
+        {
+            if (_mode != HudMode.ImGui) return;
+
+            GUI.color = new Color(1f, 0.85f, 0.35f);
+            GUI.Label(new Rect(18f, 14f, 400f, 30f), _goldText);
+            GUI.color = new Color(0.85f, 0.85f, 0.85f, 0.8f);
+            GUI.Label(new Rect(18f, 38f, 1200f, 30f), Hint);
+            GUI.color = Color.white;
+        }
+
+        // ---------------------------------------------------------------- construction
+
+        static HudMode ResolveMode()
+        {
+            if (TmpFontAvailable()) return HudMode.TextMeshPro;
+            if (LoadBuiltinFont() != null) return HudMode.LegacyText;
+
+            Debug.LogWarning("[DK] No TextMeshPro font asset and no built-in font — falling back to " +
+                             "IMGUI for the gold counter. Import TMP Essential Resources via " +
+                             "Window > TextMeshPro for nicer text.");
+            return HudMode.ImGui;
         }
 
         RectTransform BuildCanvas()
@@ -57,42 +89,23 @@ namespace DK
             return (RectTransform)canvasObject.transform;
         }
 
-        void BuildLabel(RectTransform canvas, out TextMeshProUGUI tmp, out Text legacy)
+        void BuildLabels(RectTransform canvas)
         {
-            tmp = null;
-            legacy = null;
+            var goldColor = new Color(1f, 0.85f, 0.35f);
+            var hintColor = new Color(0.85f, 0.85f, 0.85f, 0.8f);
 
-            var rect = CreateRect(canvas, "Gold Label", new Vector2(24f, -24f), new Vector2(520f, 72f));
+            var goldRect = CreateRect(canvas, "Gold Label", new Vector2(24f, -24f), new Vector2(520f, 72f));
+            var hintRect = CreateRect(canvas, "Hint Label", new Vector2(24f, -96f), new Vector2(1400f, 48f));
 
-            if (TmpFontAvailable())
+            if (_mode == HudMode.TextMeshPro)
             {
-                tmp = rect.gameObject.AddComponent<TextMeshProUGUI>();
-                tmp.fontSize = 46f;
-                tmp.color = new Color(1f, 0.85f, 0.35f);
-                tmp.alignment = TextAlignmentOptions.TopLeft;
+                _tmpLabel = AddTmpText(goldRect, 46f, goldColor);
+                AddTmpText(hintRect, 24f, hintColor).text = Hint;
                 return;
             }
 
-            legacy = AddLegacyText(rect, 40, new Color(1f, 0.85f, 0.35f));
-        }
-
-        void BuildHint(RectTransform canvas)
-        {
-            var rect = CreateRect(canvas, "Hint Label", new Vector2(24f, -96f), new Vector2(1400f, 48f));
-            var color = new Color(0.85f, 0.85f, 0.85f, 0.8f);
-
-            if (TmpFontAvailable())
-            {
-                var tmp = rect.gameObject.AddComponent<TextMeshProUGUI>();
-                tmp.fontSize = 24f;
-                tmp.color = color;
-                tmp.alignment = TextAlignmentOptions.TopLeft;
-                tmp.text = Hint;
-                return;
-            }
-
-            var legacy = AddLegacyText(rect, 20, color);
-            if (legacy != null) legacy.text = Hint;
+            _legacyLabel = AddLegacyText(goldRect, 40, goldColor);
+            AddLegacyText(hintRect, 20, hintColor).text = Hint;
         }
 
         static RectTransform CreateRect(RectTransform parent, string name, Vector2 offset, Vector2 size)
@@ -107,6 +120,15 @@ namespace DK
             return rect;
         }
 
+        static TextMeshProUGUI AddTmpText(RectTransform rect, float fontSize, Color color)
+        {
+            var text = rect.gameObject.AddComponent<TextMeshProUGUI>();
+            text.fontSize = fontSize;
+            text.color = color;
+            text.alignment = TextAlignmentOptions.TopLeft;
+            return text;
+        }
+
         static Text AddLegacyText(RectTransform rect, int fontSize, Color color)
         {
             var text = rect.gameObject.AddComponent<Text>();
@@ -117,7 +139,24 @@ namespace DK
             return text;
         }
 
-        static bool TmpFontAvailable() => TMP_Settings.defaultFontAsset != null;
+        /// <summary>
+        /// True only when TMP can actually render. Reading TMP_Settings throws outright when
+        /// TMP Essential Resources have never been imported, so this has to be defensive
+        /// rather than a plain null check.
+        /// </summary>
+        static bool TmpFontAvailable()
+        {
+            try
+            {
+                return TMP_Settings.defaultFontAsset != null;
+            }
+            catch (System.Exception)
+            {
+                // TMP_Settings.instance is null until TMP Essential Resources are imported,
+                // and the property dereferences it without checking.
+                return false;
+            }
+        }
 
         static Font LoadBuiltinFont()
         {
