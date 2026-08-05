@@ -8,7 +8,7 @@ No combat, no room-building, no multiple creatures yet — this is a vertical
 slice of the single most important loop.
 
 ## Tech stack
-- Unity 6.3 LTS (6000.3.x) — install via Unity Hub if not already present
+- Unity 6.5 (6000.5.x) — install via Unity Hub if not already present
 - URP (Universal Render Pipeline), 3D template
 - C#, no external packages beyond what ships with Unity 6 (no NavMesh package needed — see below)
 - Build target: WebGL, for fast iteration and easy sharing (Vercel/itch.io)
