@@ -218,7 +218,52 @@ namespace DK.EditorTools
         {
             GraphicsSettings.defaultRenderPipeline = pipeline;
             QualitySettings.renderPipeline = pipeline;
+            TuneRendering(pipeline);
             AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// A URP asset is created with multisampling off and 50 metres of shadow distance,
+        /// which is a fraction of this map. The Editor's Game view hides both — it is usually
+        /// looking at a small part of the dungeon from close up — and a build does not: block
+        /// edges crawl, and everything past the shadow distance lights differently from
+        /// everything inside it, which reads as only part of the map being lit.
+        ///
+        /// Set through reflection like the rest of the URP handling here, so the project still
+        /// compiles and runs with the package absent.
+        /// </summary>
+        public static void TuneRendering(RenderPipelineAsset pipeline)
+        {
+            // Built-in fallback path, and harmless under URP.
+            QualitySettings.antiAliasing = 4;
+            QualitySettings.shadowDistance = ShadowDistance;
+            QualitySettings.pixelLightCount = 4;
+
+            if (pipeline == null) return;
+
+            TrySet(pipeline, "msaaSampleCount", 4);
+            TrySet(pipeline, "shadowDistance", ShadowDistance);
+            TrySet(pipeline, "shadowCascadeCount", 4);
+        }
+
+        /// <summary>Long enough to cover a 32x32 grid seen from the far end of the zoom.</summary>
+        const float ShadowDistance = 160f;
+
+        static void TrySet(object target, string property, object value)
+        {
+            var info = target.GetType().GetProperty(property,
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.SetProperty);
+
+            if (info == null || !info.CanWrite) return;
+
+            try
+            {
+                info.SetValue(target, value);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[DK] Could not set {property} on the render pipeline asset ({e.Message}).");
+            }
         }
 
         static Type FindType(string fullName)

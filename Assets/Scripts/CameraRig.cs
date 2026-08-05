@@ -44,6 +44,13 @@ namespace DK
             var size = new Vector3(grid.Width * GridManager.TileSize, 0f, grid.Depth * GridManager.TileSize);
             _panBounds = new Bounds(center, size);
 
+            // Far enough out to hold the whole grid in frame at this pitch, whatever size it
+            // is. A fixed ceiling meant a bigger map could only ever be seen a corner at a
+            // time, which reads as the map being dark rather than as the camera being close.
+            float span = Mathf.Max(size.x, size.z);
+            MaxDistance = Mathf.Max(MaxDistance, span * 1.45f);
+            _distance = Mathf.Clamp(span * 0.95f, MinDistance, MaxDistance);
+
             _targetYaw = YawDegrees;
             _currentYaw = YawDegrees;
 

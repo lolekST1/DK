@@ -12,8 +12,11 @@ namespace DK
     public class GameBootstrap : MonoBehaviour
     {
         [Header("Grid")]
-        public int GridWidth = 20;
-        public int GridDepth = 20;
+        // 32x32 holds roughly a hundred gold seams. At 20x20 a single raid could take most of
+        // what the dungeon had mined, and there was not enough left in the rock to recover
+        // before payday came round again.
+        public int GridWidth = 32;
+        public int GridDepth = 32;
         public int Seed = 1337;
         [Range(0f, 0.5f)] public float GoldChance = 0.10f;
         public int StartingChamberRadius = 2;
@@ -33,7 +36,8 @@ namespace DK
         public int HeartHealth = DungeonHeart.DefaultHealth;
 
         [Header("Imps")]
-        public int ImpCount = 4;
+        // More ground to cover, so more diggers. Still one crew, still one queue.
+        public int ImpCount = 6;
         public float ImpMoveSpeed = 3.0f;
         public float ImpDigDuration = 1.2f;
 

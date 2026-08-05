@@ -19,6 +19,10 @@ namespace DK.EditorTools
         [MenuItem("Dungeon Keeper Prototype/Build WebGL")]
         public static void Build()
         {
+            // The asset is usually created on first Editor load, long before a build, so tune
+            // it here as well: this is the run where the settings actually show.
+            ProjectAutoSetup.TuneRendering(UnityEngine.Rendering.GraphicsSettings.defaultRenderPipeline);
+
             var scenes = EditorBuildSettings.scenes
                 .Where(scene => scene.enabled)
                 .Select(scene => scene.path)

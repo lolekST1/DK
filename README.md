@@ -236,6 +236,14 @@ pointer is over one before it picks or paints, so a click on a button never also
 tile behind it, and every HUD text line is `raycastTarget = false` so the full-width labels do
 not swallow clicks aimed at the map.
 
+**The build has to be told what the Editor assumes.** A URP asset is created with
+multisampling off and fifty metres of shadow distance. The Game view hides both — it is usually
+looking at part of the dungeon from close up — and a build does not: block edges crawl, and
+everything past the shadow distance lights differently from everything inside it. Both are set
+explicitly on the pipeline asset, through reflection like the rest of the URP handling, so the
+project still builds with the package absent. The camera's zoom-out also scales with the grid,
+because a fixed ceiling meant a bigger map could only be seen a corner at a time.
+
 **No colliders.** Mouse picking is two maths-plane raycasts — one at the top of the blocks,
 one at floor level — so there is not a single collider in the scene.
 
