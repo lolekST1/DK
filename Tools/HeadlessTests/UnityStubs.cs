@@ -50,6 +50,7 @@ namespace UnityEngine
         public static Quaternion Euler(float x, float y, float z) => default;
         public static Quaternion LookRotation(Vector3 forward, Vector3 up) => default;
         public static Quaternion Slerp(Quaternion a, Quaternion b, float t) => default;
+        public Vector3 eulerAngles => default;
         public static Vector3 operator *(Quaternion q, Vector3 v) => v;
     }
 
@@ -83,6 +84,8 @@ namespace UnityEngine
         public static float InverseLerp(float a, float b, float v) => 0f;
         public static float MoveTowards(float a, float b, float d) => b;
         public static bool Approximately(float a, float b) => a == b;
+        public static float LerpAngle(float a, float b, float t) => b;
+        public static float DeltaAngle(float a, float b) => b - a;
     }
 
     public struct Rect
@@ -107,6 +110,8 @@ namespace UnityEngine
         public Plane(Vector3 normal, float d) { }
         public bool Raycast(Ray ray, out float distance) { distance = 0f; return true; }
     }
+
+    public enum KeyCode { Q, E }
 
     public enum PrimitiveType { Cube, Capsule, Sphere, Quad, Plane }
     public enum CameraClearFlags { SolidColor, Skybox }
@@ -260,6 +265,7 @@ namespace UnityEngine
         public static bool GetMouseButtonUp(int b) => false;
         public static bool GetMouseButton(int b) => false;
         public static float GetAxisRaw(string axis) => 0f;
+        public static bool GetKeyDown(KeyCode key) => false;
     }
 
     public static class Time { public static float deltaTime = 1f / 60f; }

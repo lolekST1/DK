@@ -21,6 +21,7 @@ are all created and wired at runtime in `GameBootstrap.Awake()`.
 | Left mouse (hold to paint) | Mark rock / gold tiles for digging |
 | Right mouse (hold to paint) | Cancel a mark |
 | WASD, arrow keys, or screen edge | Pan the camera |
+| Q / E | Rotate the camera 90° |
 | Scroll wheel | Zoom |
 
 ## WebGL build
@@ -49,7 +50,7 @@ Assets/Scripts/
   Pathfinder.cs       4-directional A* over the tile array
   ImpAI.cs            Idle → MoveToTarget → Digging → ReturnToBase
   TileDigger.cs       Mouse picking, hover cursor, mark/unmark
-  CameraRig.cs        45° rig: pan, zoom, clamped to the grid
+  CameraRig.cs        45° rig: pan, zoom, 90° rotation, clamped to the grid
   ResourceManager.cs  Gold counter
   GoldHud.cs          Runtime-built Canvas + TextMeshPro readout
   MaterialLibrary.cs  Runtime materials, pipeline-agnostic shader lookup

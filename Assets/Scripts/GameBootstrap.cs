@@ -31,9 +31,10 @@ namespace DK
             Economy = CreateResourceManager();
             Grid = CreateGrid();
 
+            // Lighting first: the rig keeps the sun in step with its own yaw.
+            var sun = CreateLighting();
             var camera = CreateCamera();
-            Rig = CreateCameraRig(camera);
-            CreateLighting();
+            Rig = CreateCameraRig(camera, sun);
 
             Imp = CreateImp();
             CreateTileDigger(camera);
@@ -71,17 +72,17 @@ namespace DK
             return camera;
         }
 
-        CameraRig CreateCameraRig(Camera camera)
+        CameraRig CreateCameraRig(Camera camera, Transform sun)
         {
             var go = new GameObject("CameraRig");
             go.transform.SetParent(transform, false);
 
             var rig = go.AddComponent<CameraRig>();
-            rig.Configure(camera, Grid);
+            rig.Configure(camera, Grid, sun);
             return rig;
         }
 
-        void CreateLighting()
+        Transform CreateLighting()
         {
             var go = new GameObject("Sun", typeof(Light));
             go.transform.SetParent(transform, false);
@@ -99,6 +100,7 @@ namespace DK
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             // Enough ambient that shadowed floor keeps its shape instead of crushing to black.
             RenderSettings.ambientLight = new Color(0.36f, 0.36f, 0.42f);
+            return go.transform;
         }
 
         ImpAI CreateImp()

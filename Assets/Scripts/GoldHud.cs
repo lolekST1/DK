@@ -20,7 +20,7 @@ namespace DK
         Text _legacyLabel;
         string _goldText = "Gold: 0";
 
-        const string Hint = "LMB drag: mark for digging   RMB: cancel   WASD / screen edge: pan   Wheel: zoom";
+        const string Hint = "LMB drag: mark for digging   RMB: cancel   WASD / screen edge: pan   Q/E: rotate   Wheel: zoom";
 
         public void Configure(ResourceManager resources)
         {
