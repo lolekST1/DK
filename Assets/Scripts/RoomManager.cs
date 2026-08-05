@@ -37,6 +37,7 @@ namespace DK
 
         readonly List<Vector2Int> _storageTiles = new List<Vector2Int>();
         readonly List<Vector2Int> _lairTiles = new List<Vector2Int>();
+        readonly List<Vector2Int> _portalTiles = new List<Vector2Int>();
 
         // Lair ownership is two-way so selling a tile can evict exactly one imp.
         readonly Dictionary<Vector2Int, object> _lairOwner = new Dictionary<Vector2Int, object>();
@@ -45,11 +46,13 @@ namespace DK
 
         Transform _roomsRoot;
         Transform _heartCore;
+        Transform _portalCore;
         float _heartPhase;
 
         Material _pileMaterial;
         Material _heartCoreMaterial;
         Material _heartPlinthMaterial;
+        Material _portalCoreMaterial;
         readonly Dictionary<RoomType, Material> _floorMaterials = new Dictionary<RoomType, Material>();
 
         int _gold;
@@ -64,6 +67,11 @@ namespace DK
         public int FreeCapacity => Mathf.Max(0, _capacity - _gold);
 
         public Vector2Int HeartCell => _grid != null ? _grid.BaseCell : default;
+
+        /// <summary>Where creatures walk in. Only meaningful once <see cref="HasPortal"/>.</summary>
+        public Vector2Int PortalCell { get; private set; }
+
+        public bool HasPortal => _portalTiles.Count > 0;
 
         /// <summary>Raised when gold or capacity moved. Carries (stored, capacity).</summary>
         public event Action<int, int> StorageChanged;
@@ -87,6 +95,7 @@ namespace DK
             _roomsRoot.SetParent(transform, false);
 
             _pileMaterial = MaterialLibrary.CreateLit("DK_GoldPile", new Color(0.95f, 0.78f, 0.20f), 0.55f, 0.75f);
+            _portalCoreMaterial = MaterialLibrary.CreateLit("DK_PortalCore", new Color(0.35f, 0.72f, 1.00f), 0.7f);
             _heartCoreMaterial = MaterialLibrary.CreateLit("DK_HeartCore", new Color(0.90f, 0.15f, 0.22f), 0.6f);
             _heartPlinthMaterial = MaterialLibrary.CreateLit("DK_HeartPlinth", new Color(0.22f, 0.06f, 0.10f));
 
@@ -109,6 +118,50 @@ namespace DK
             // Seed capital lives in the heart like everything else, so the HUD reads honestly
             // from the very first frame.
             DepositAnywhere(StartingGold);
+        }
+
+        /// <summary>
+        /// Places the portal on already-carved floor. The map does this, not the player: the
+        /// cavern starts sealed in rock, so reaching it is the first thing worth digging for.
+        /// </summary>
+        public void BuildPortal(Vector2Int centre, int radius)
+        {
+            for (int x = centre.x - radius; x <= centre.x + radius; x++)
+            for (int z = centre.y - radius; z <= centre.y + radius; z++)
+            {
+                if (!_grid.IsWalkable(x, z)) continue;
+                SetRoom(x, z, RoomType.Portal);
+            }
+
+            if (!HasPortal) return;
+
+            PortalCell = _grid.IsWalkable(centre.x, centre.y) ? centre : _portalTiles[0];
+            BuildPortalCentrepiece(PortalCell);
+        }
+
+        void BuildPortalCentrepiece(Vector2Int centre)
+        {
+            var root = new GameObject("PortalCore").transform;
+            root.SetParent(_roomsRoot, false);
+            root.localPosition = _grid.CellToWorld(centre);
+
+            var rim = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            rim.name = "Rim";
+            Destroy(rim.GetComponent<Collider>());
+            rim.transform.SetParent(root, false);
+            rim.transform.localScale = new Vector3(0.9f, 0.04f, 0.9f);
+            rim.transform.localPosition = new Vector3(0f, 0.05f, 0f);
+            rim.GetComponent<Renderer>().sharedMaterial = _heartPlinthMaterial;
+
+            var core = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            core.name = "Core";
+            Destroy(core.GetComponent<Collider>());
+            core.transform.SetParent(root, false);
+            core.transform.localScale = new Vector3(0.55f, 0.03f, 0.55f);
+            core.transform.localPosition = new Vector3(0f, 0.12f, 0f);
+            core.GetComponent<Renderer>().sharedMaterial = _portalCoreMaterial;
+
+            _portalCore = core.transform;
         }
 
         void BuildHeartCentrepiece(Vector2Int centre)
@@ -144,6 +197,10 @@ namespace DK
             _heartPhase += Time.deltaTime * 2.2f;
             float scale = 0.5f + Mathf.Sin(_heartPhase) * 0.045f;
             _heartCore.localScale = new Vector3(scale, scale, scale);
+
+            // The portal turns instead of beating, so the two centrepieces read apart at a glance.
+            if (_portalCore != null)
+                _portalCore.Rotate(0f, Time.deltaTime * 45f, 0f);
         }
 
         // ---------------------------------------------------------------- queries
@@ -264,6 +321,8 @@ namespace DK
             }
 
             if (type == RoomType.Lair) _lairTiles.Add(cell);
+            if (type == RoomType.Portal) _portalTiles.Add(cell);
+            if (previous == RoomType.Portal) _portalTiles.Remove(cell);
 
             UpdateSlab(x, z);
             UpdatePile(x, z);
@@ -436,6 +495,22 @@ namespace DK
             _workerLair.TryGetValue(worker, out var cell) && GetRoom(cell) == RoomType.Lair;
 
         public int LairCount => _lairTiles.Count;
+
+        /// <summary>
+        /// Lair tiles nobody sleeps on. Imps and portal creatures share the same housing, so
+        /// an imp that has moved in is one fewer creature the portal will send.
+        /// </summary>
+        public int FreeLairCount
+        {
+            get
+            {
+                int free = 0;
+                for (int i = 0; i < _lairTiles.Count; i++)
+                    if (!_lairOwner.ContainsKey(_lairTiles[i])) free++;
+
+                return free;
+            }
+        }
 
         void ReleaseLair(Vector2Int cell)
         {

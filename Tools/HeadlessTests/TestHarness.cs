@@ -111,6 +111,9 @@ public static class TestHarness
         FullVaultChecks();
         LairChecks();
 
+        // --- portal, creatures and payroll ------------------------------------
+        PortalChecks();
+
         Console.WriteLine(_failures == 0
             ? "\nAll checks passed."
             : $"\n{_failures} check(s) FAILED.");
@@ -445,6 +448,129 @@ public static class TestHarness
         imp.Configure(world.Grid, world.Economy, world.Rooms,
             new GameObject(name + "Body").transform, new GameObject(name + "Nugget").transform, home);
         return imp;
+    }
+
+    // ------------------------------------------------------------------ portal
+
+    static readonly MethodInfo CreatureUpdate =
+        typeof(CreatureAI).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    static readonly MethodInfo ManagerUpdate =
+        typeof(CreatureManager).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    static void PortalChecks()
+    {
+        var grid = new GameObject("PortalGrid").AddComponent<GridManager>();
+        grid.Configure(20, 20, 99, 0.10f, 2);
+
+        var rooms = new GameObject("PortalRooms").AddComponent<RoomManager>();
+        rooms.Configure(grid);
+
+        var economy = new GameObject("PortalEconomy").AddComponent<ResourceManager>();
+        economy.Configure(rooms);
+
+        var portalCell = new Vector2Int(15, 15);
+        grid.CarveChamber(portalCell, 1);
+        rooms.BuildPortal(portalCell, 1);
+
+        Check(rooms.HasPortal, "the map starts with a portal");
+        Check(rooms.PortalCell == portalCell, "the portal knows its own centre");
+        Check(rooms.GetRoom(15, 16) == RoomType.Portal, "the portal covers its whole cavern");
+        Check(!rooms.CanSell(15, 15), "the portal cannot be sold off by accident");
+
+        var manager = new GameObject("PortalManager").AddComponent<CreatureManager>();
+        manager.SpawnInterval = 1f;
+        manager.PaydayInterval = 1000f;
+        manager.Configure(grid, rooms, economy);
+
+        // Sealed in rock: nothing arrives however long you wait.
+        StepManager(manager, 5f);
+        Check(!manager.PortalConnected, "a portal walled off from the heart counts as unreachable");
+        Check(manager.ArrivalBlocker != null, $"arrivals are blocked: {manager.ArrivalBlocker}");
+        Check(manager.CreatureCount == 0, "no creature arrives through a sealed portal");
+
+        // Dig a corridor out to it.
+        for (int x = 13; x <= 15; x++) grid.CarveChamber(new Vector2Int(x, 10), 0);
+        for (int z = 11; z <= 13; z++) grid.CarveChamber(new Vector2Int(15, z), 0);
+
+        StepManager(manager, 0.2f);
+        Check(manager.PortalConnected, "digging through to the portal connects it");
+        Check(manager.ArrivalBlocker != null && manager.ArrivalBlocker.Contains("lair"),
+            "a connected portal still waits for somewhere to sleep");
+        Check(manager.CreatureCount == 0, "no creature arrives with no lair to move into");
+
+        // Somewhere to sleep. The heart's opening capital is exactly one lair tile.
+        Check(rooms.Build(12, 10, RoomType.Lair), "a lair goes up for the starting 100 gold");
+        StepManager(manager, 0.2f);
+        Check(manager.ArrivalBlocker == null, "a connected portal with a free lair lets creatures in");
+
+        StepManager(manager, 1.2f);
+        Check(manager.CreatureCount == 1, $"a creature walked in ({manager.CreatureCount})");
+
+        var beetle = manager.Creatures[0];
+        Check(beetle.CurrentCell == portalCell, "the creature arrives standing on the portal");
+
+        StepCreature(beetle, 1f);
+        Check(beetle.HasLair, "the creature moves into the free lair unprompted");
+        Check(rooms.FreeLairCount == 0, "an occupied lair is no longer free");
+
+        StepManager(manager, 0.2f);
+        Check(manager.ArrivalBlocker != null && manager.ArrivalBlocker.Contains("lair"),
+            "the next creature waits for a second lair");
+
+        // --- payday ---------------------------------------------------------
+        rooms.DepositAnywhere(60);
+        int before = economy.Gold;
+        manager.RunPayday();
+
+        Check(economy.Gold == before - beetle.Wage,
+            $"payday took {beetle.Wage} gold out of the vault ({before} -> {economy.Gold})");
+        Check(beetle.MissedPaydays == 0, "a paid creature has no grudge");
+        Check(manager.TotalWagesPaid == beetle.Wage, "wages paid are tallied");
+
+        // Drain the vault and miss three in a row.
+        while (economy.TrySpend(1)) { }
+        Check(economy.Gold == 0, "the vault is empty for the unpaid case");
+
+        for (int i = 0; i < 3; i++) manager.RunPayday();
+
+        Check(beetle.MissedPaydays == 3, "three paydays missed in a row");
+        Check(manager.MissedPayments == 3, "the dungeon counts its failures to pay");
+        Check(beetle.Anger >= 1f, $"three missed paydays is the end of its patience ({beetle.Anger:0.00})");
+
+        StepCreature(beetle, 0.1f);
+        Check(beetle.State == CreatureState.Leaving, "an unpaid creature heads for the portal");
+
+        float walked = RunCreatureUntil(beetle, () => beetle.HasLeft, 120f);
+        Check(walked > 0f, $"it walked back out through the portal after {walked:0.0}s");
+
+        StepManager(manager, 0.1f);
+        Check(manager.CreatureCount == 0, "a departed creature leaves the roster");
+        Check(manager.Departed == 1, "the departure is counted");
+        Check(rooms.FreeLairCount == 1, "its lair is free again for the next arrival");
+    }
+
+    static void StepManager(CreatureManager manager, float seconds)
+    {
+        int steps = (int)(seconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++) ManagerUpdate.Invoke(manager, null);
+    }
+
+    static void StepCreature(CreatureAI creature, float seconds)
+    {
+        int steps = (int)(seconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++) CreatureUpdate.Invoke(creature, null);
+    }
+
+    static float RunCreatureUntil(CreatureAI creature, Func<bool> done, float timeoutSeconds)
+    {
+        int steps = (int)(timeoutSeconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+        {
+            CreatureUpdate.Invoke(creature, null);
+            if (done()) return (i + 1) * Time.deltaTime;
+        }
+        return -1f;
     }
 
     // ------------------------------------------------------------------ helpers

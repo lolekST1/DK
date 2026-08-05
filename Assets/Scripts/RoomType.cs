@@ -10,5 +10,6 @@ namespace DK
         DungeonHeart,
         Treasury,
         Lair,
+        Portal,
     }
 }

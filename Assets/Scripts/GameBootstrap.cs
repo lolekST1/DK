@@ -18,6 +18,12 @@ namespace DK
         [Range(0f, 0.5f)] public float GoldChance = 0.10f;
         public int StartingChamberRadius = 2;
 
+        [Header("Portal")]
+        public int PortalRadius = 1;
+        public float CreatureSpawnInterval = 20f;
+        public float PaydayInterval = 45f;
+        public int MaxCreatures = 8;
+
         [Header("Imps")]
         public int ImpCount = 4;
         public float ImpMoveSpeed = 3.0f;
@@ -27,6 +33,7 @@ namespace DK
         public RoomManager Rooms { get; private set; }
         public ResourceManager Economy { get; private set; }
         public IReadOnlyList<ImpAI> Imps { get; private set; }
+        public CreatureManager Creatures { get; private set; }
         public CameraRig Rig { get; private set; }
         public PlayerTools Tools { get; private set; }
 
@@ -36,6 +43,7 @@ namespace DK
             Grid = CreateGrid();
             Rooms = CreateRooms();
             Economy = CreateResourceManager();
+            Creatures = CreateCreatureManager();
 
             // Lighting before the rig: the rig keeps the sun in step with its own yaw.
             var sun = CreateLighting();
@@ -64,7 +72,27 @@ namespace DK
 
             var rooms = go.AddComponent<RoomManager>();
             rooms.Configure(Grid);
+
+            // The portal cavern is carved but sealed off: it exists from the first frame, and
+            // reaching it is the first thing the player has a reason to dig towards.
+            var portalCell = new Vector2Int(Grid.Width * 3 / 4, Grid.Depth * 3 / 4);
+            Grid.CarveChamber(portalCell, PortalRadius);
+            rooms.BuildPortal(portalCell, PortalRadius);
+
             return rooms;
+        }
+
+        CreatureManager CreateCreatureManager()
+        {
+            var go = new GameObject("CreatureManager");
+            go.transform.SetParent(transform, false);
+
+            var creatures = go.AddComponent<CreatureManager>();
+            creatures.SpawnInterval = CreatureSpawnInterval;
+            creatures.PaydayInterval = PaydayInterval;
+            creatures.MaxCreatures = MaxCreatures;
+            creatures.Configure(Grid, Rooms, Economy);
+            return creatures;
         }
 
         GridManager CreateGrid()
@@ -222,7 +250,7 @@ namespace DK
         {
             var go = new GameObject("HUD");
             go.transform.SetParent(transform, false);
-            go.AddComponent<GameHud>().Configure(Economy, Rooms, Tools, Imps);
+            go.AddComponent<GameHud>().Configure(Economy, Rooms, Tools, Imps, Creatures);
         }
     }
 }

@@ -60,6 +60,7 @@ namespace UnityEngine
         public Color(float r, float g, float b) { this.r = r; this.g = g; this.b = b; a = 1f; }
         public Color(float r, float g, float b, float a) { this.r = r; this.g = g; this.b = b; this.a = a; }
         public static Color white => new Color(1, 1, 1);
+        public static Color Lerp(Color a, Color b, float t) => a;
     }
 
     public struct Bounds
@@ -82,6 +83,8 @@ namespace UnityEngine
         public static float Min(float a, float b) => Math.Min(a, b);
         public static int FloorToInt(float v) => (int)Math.Floor(v);
         public static float Clamp(float v, float lo, float hi) => Math.Min(hi, Math.Max(lo, v));
+        public static float Clamp01(float v) => Clamp(v, 0f, 1f);
+        public static int CeilToInt(float v) => (int)Math.Ceiling(v);
         public static float Lerp(float a, float b, float t) => a + (b - a) * t;
         public static float InverseLerp(float a, float b, float v) => 0f;
         public static float MoveTowards(float a, float b, float d) => b;
@@ -115,7 +118,7 @@ namespace UnityEngine
 
     public enum KeyCode { Q, E, Escape, Alpha1, Alpha2, Alpha3, Alpha4 }
 
-    public enum PrimitiveType { Cube, Capsule, Sphere, Quad, Plane }
+    public enum PrimitiveType { Cube, Capsule, Cylinder, Sphere, Quad, Plane }
     public enum CameraClearFlags { SolidColor, Skybox }
     public enum LightType { Directional, Point, Spot }
     public enum LightShadows { None, Hard, Soft }
@@ -125,7 +128,11 @@ namespace UnityEngine
     public class Object
     {
         public string name;
-        public static void Destroy(Object o) { if (o is Component c && c.gameObject != null) c.gameObject.Remove(c); }
+        public static void Destroy(Object o)
+        {
+            if (o is GameObject go) go.DestroySelf();
+            else if (o is Component c && c.gameObject != null) c.gameObject.Remove(c);
+        }
         public override string ToString() => name ?? GetType().Name;
     }
 
@@ -147,6 +154,7 @@ namespace UnityEngine
         public Quaternion rotation, localRotation;
         public Transform parent;
         public void SetParent(Transform p, bool worldPositionStays) { parent = p; }
+        public void Rotate(float x, float y, float z) { }
     }
 
     public class RectTransform : Transform
@@ -178,6 +186,20 @@ namespace UnityEngine
         public void SetActive(bool value) { activeSelf = value; }
 
         internal void Remove(Component c) { _components.Remove(c); }
+
+        /// <summary>Runs OnDestroy on every component, the way Unity does when an object dies.</summary>
+        internal void DestroySelf()
+        {
+            for (int i = _components.Count - 1; i >= 0; i--)
+            {
+                var method = _components[i].GetType().GetMethod("OnDestroy",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic);
+                method?.Invoke(_components[i], null);
+            }
+
+            _components.Clear();
+        }
 
         T Attach<T>(T component) where T : Component
         {

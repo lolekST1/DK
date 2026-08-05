@@ -101,15 +101,24 @@ Landed since:
   spills. `ResourceManager` is now a facade over the vaults rather than an int of its own,
   so `AddGold(int)` from the brief no longer exists — use `Bank(cell, amount)`.
 - **Lairs.** Imps claim a lair tile unprompted and dig 30% faster once they have one.
+- **The portal and its creatures.** A `Portal` room the map places in a sealed cavern, plus
+  `CreatureManager` (arrivals, payday, departures) and `CreatureAI` (sleep and wage needs).
+  Arrivals are gated on a dug route to the portal and a free lair; unpaid creatures redden
+  and walk back out. `CreatureCatalog` holds the balance, mirroring `RoomCatalog`.
 - Two renames as their jobs widened: `TileDigger` → `PlayerTools` (dig, build and sell
   tools), `GoldHud` → `GameHud` (gold, tool bar, status line).
 
 Deliberately still simplified: dug floor is owned immediately, with no per-tile claiming
 step for the imps — see the design notes in `README.md`.
 
-Natural next parts, roughly in dependency order: a portal spawning creatures other than
-imps, with needs (lairs already exist to hang them off); then combat and hero incursions;
-then verticality, which the 3D tile array is already shaped for.
+Deliberately still simplified: `CreatureAI` carries its own copy of the path-following and
+bobbing code that `ImpAI` has. Unifying them behind one walker is worth doing, but not in the
+same change that introduced the creature layer.
+
+Natural next parts, roughly in dependency order: more creature kinds hanging off
+`CreatureCatalog` (the enum and switch are already shaped for it); then combat and hero
+incursions, which is what would finally give creatures something to do; then verticality,
+which the 3D tile array is already shaped for.
 
 ## Workflow
 Follow the usual approach: work independently, self-fix compile/runtime

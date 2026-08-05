@@ -120,6 +120,27 @@ namespace DK
             }
         }
 
+        /// <summary>
+        /// Digs out a square of tiles immediately, with no queue and no imp. Used for the
+        /// places the map starts with rather than the ones the player earns: the opening
+        /// chamber and the portal cavern.
+        /// </summary>
+        public void CarveChamber(Vector2Int centre, int radius)
+        {
+            for (int x = centre.x - radius; x <= centre.x + radius; x++)
+            for (int z = centre.y - radius; z <= centre.y + radius; z++)
+            {
+                if (!InBounds(x, z)) continue;
+
+                _states[x, 0, z] = TileState.Dug;
+                _marked[x, 0, z] = false;
+                _queued.Remove(new Vector2Int(x, z));
+                _claims.Remove(new Vector2Int(x, z));
+                if (_blocks[x, 0, z] != null) _blocks[x, 0, z].SetActive(false);
+                TileChanged?.Invoke(x, z);
+            }
+        }
+
         void CarveStartingChamber(int radius)
         {
             // The imp needs somewhere to stand before anything has been dug.

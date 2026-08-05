@@ -29,6 +29,7 @@ namespace DK
         readonly Line _gold = new Line();
         readonly Line _toolbar = new Line();
         readonly Line _status = new Line();
+        CreatureManager _creatures;
 
         float _refreshTimer;
 
@@ -54,12 +55,13 @@ namespace DK
         }
 
         public void Configure(ResourceManager resources, RoomManager rooms, PlayerTools tools,
-                              IReadOnlyList<ImpAI> imps)
+                              IReadOnlyList<ImpAI> imps, CreatureManager creatures)
         {
             _resources = resources;
             _rooms = rooms;
             _tools = tools;
             _imps = imps;
+            _creatures = creatures;
             _mode = ResolveMode();
 
             if (_mode != HudMode.ImGui)
@@ -108,6 +110,12 @@ namespace DK
             int carried = CarriedGold();
             if (carried > 0) Builder.Append("   (+").Append(carried).Append(" in hand)");
 
+            if (_creatures != null && _creatures.CreatureCount > 0)
+            {
+                Builder.Append("   Creatures ").Append(_creatures.CreatureCount);
+                Builder.Append("   Payday ").Append(Mathf.CeilToInt(_creatures.SecondsToPayday)).Append('s');
+            }
+
             _gold.Set(Builder.ToString());
         }
 
@@ -150,6 +158,16 @@ namespace DK
                 return "Vaults are full — imps are standing around holding " + carried +
                        " gold. Build a treasury [2].";
 
+            // Creatures walking out is the most expensive thing that can be going wrong.
+            if (_creatures != null && _creatures.CreatureCount > 0 &&
+                _resources != null && _resources.Gold < WageBill())
+                return "Cannot make payroll — " + WageBill() + " gold due, " + _resources.Gold +
+                       " in the vault. Creatures leave after three missed paydays.";
+
+            if (_creatures != null && _creatures.ArrivalBlocker != null &&
+                _rooms != null && _rooms.HasPortal)
+                return "Portal: " + _creatures.ArrivalBlocker;
+
             if (_rooms != null && _rooms.LairCount == 0)
                 return "No lair yet. Imps with a lair dig faster [3].";
 
@@ -157,6 +175,21 @@ namespace DK
                 return "Spilled " + _resources.TotalSpilled + " gold with nowhere to store it.";
 
             return string.Empty;
+        }
+
+        /// <summary>What the next payday will cost, so the warning can name a number.</summary>
+        int WageBill()
+        {
+            if (_creatures == null) return 0;
+
+            int total = 0;
+            for (int i = 0; i < _creatures.Creatures.Count; i++)
+            {
+                var creature = _creatures.Creatures[i];
+                if (creature != null) total += creature.Wage;
+            }
+
+            return total;
         }
 
         int CarriedGold()

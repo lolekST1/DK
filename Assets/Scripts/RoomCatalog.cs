@@ -65,6 +65,20 @@ namespace DK
                         FloorColor = new Color(0.26f, 0.16f, 0.34f),
                     };
 
+                case RoomType.Portal:
+                    return new Entry
+                    {
+                        Name = "Portal",
+                        Hotkey = "-",
+                        CostPerTile = 0,
+                        GoldCapacityPerTile = 0,
+                        // Placed by the map, not the player, and never sellable: it is the only
+                        // way creatures reach the dungeon, so losing it by misclick is not a
+                        // decision worth offering.
+                        PlayerBuildable = false,
+                        FloorColor = new Color(0.16f, 0.32f, 0.52f),
+                    };
+
                 default:
                     return new Entry
                     {
