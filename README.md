@@ -3,8 +3,8 @@
 A vertical slice of the core Dungeon Keeper loop: mark rock for digging, imps path to it and
 dig it out, then haul what they mine back to a vault you had to build and pay for. A dungeon
 heart sits at the centre, lairs give everyone somewhere to sleep, and a portal sealed in the
-rock sends creatures once you dig your way to it — creatures that expect wages every payday.
-No combat yet.
+rock sends creatures once you dig your way to it — creatures that expect wages every payday and
+earn them by fighting off the heroes who come for your vault.
 
 ## Running it
 
@@ -82,7 +82,11 @@ Assets/Scripts/
   RoomManager.cs      Rooms on top of terrain: heart, vault gold, lair ownership, slabs
   RoomCatalog.cs      Cost / capacity / colour per room type — the whole economy balance
   LooseGold.cs        Gold dropped on the floor: piles, per-pile claims, pickup
-  RoomType.cs         None / DungeonHeart / Treasury / Lair / Portal
+  RoomType.cs         None / DungeonHeart / Treasury / Lair / Portal / HeroGate
+  Battlefield.cs      Combatant roster and "who is near enough to hit"
+  HeroManager.cs      Hero gate: raid clock, roster, loot stolen and recovered
+  HeroAI.cs           Advancing → Fighting → Escaping, and robbing a vault tile
+  HeroCatalog.cs      Health, damage and loot capacity per hero kind
   CreatureManager.cs  Portal roster: arrivals, payday, departures
   CreatureAI.cs       Idle → GoingToLair → Sleeping / Wandering / Leaving
   CreatureCatalog.cs  Wage, fatigue and patience per creature — the whole creature balance
@@ -101,6 +105,15 @@ Assets/Editor/
 Assets/Settings/      URP pipeline and renderer assets, created on first Editor load
 Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 ```
+
+### Raids
+
+A hero gate sits sealed in the opposite corner from the portal. Dig through to it and raids
+start after a grace period: a knight walks in, makes for the nearest vault tile with gold on
+it, takes what it can carry and heads back to the gate. Creatures leave their lairs to
+intercept it — one beetle loses to a knight, two win, so the answer to a raid is housing and
+paying more creatures. Kill it before it reaches the gate and the loot falls on the floor, and
+the imps carry it home. Let it out and the gold is gone.
 
 ## Design notes
 
@@ -166,6 +179,22 @@ payroll takes three missed paydays. Both are long enough to notice the HUD warni
 your way out of trouble — a creature that vanished the moment the vault ran dry would read as
 a bug rather than as a consequence.
 
+**Digging is what invites the raids in.** The hero gate has to be dug through to before
+anything comes out of it, exactly like the portal. That makes expanding a decision rather than
+a chore: the map is not a safe box you empty at your own pace, and the two things worth digging
+towards pull in opposite directions.
+
+**Heroes steal instead of destroying.** A raid that reached the heart could have ended the run,
+which for a prototype means writing a game-over screen and a restart before the combat itself
+is worth playing. Loot is a loss you read straight off the gold counter, it is recoverable if
+you kill the thief in time, and it needs no new UI at all.
+
+**Neither side knows the other exists.** `CreatureAI` and `HeroAI` never reference each other —
+they ask `Battlefield` for the nearest enemy and get an `ICombatant` back. One place decides
+who can see and reach whom, and adding a third faction would not touch either class. Imps are
+deliberately not on the roster: a workforce that could be killed needs a replacement policy the
+prototype does not have.
+
 **No NavMesh.** Tiles appear and vanish at runtime, which NavMesh handles poorly. A
 hand-rolled A* over the array we already own is simpler, faster and predictable. It reuses
 its scratch buffers, so pathfinding does not allocate per search.
@@ -213,6 +242,11 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   out of, nobody fetches it while there is nowhere to put it, and once the vault has room an imp
   carries it in. Claims are checked directly: two imps cannot hold the same pile, releasing
   hands it over, and an empty tile cannot be claimed at all.
+- **Raids** — nothing comes through a gate still sealed in rock, digging through opens it, and
+  a hero walks in on the clock. Then the three ways a raid can end: robbed and killed while
+  carrying, so the loot lands on the floor and is counted as recovered; met by four defenders
+  and put down; or unopposed, out through the gate, with the vault lighter by exactly what it
+  carried.
 - **Digging first** — with a whole map queued and vault space to spare, no imp spends a single
   frame carrying gold while there is still rock queued to break. Once the queue is empty the
   same crew collects the floor, and stops only when the vault is full rather than giving up.

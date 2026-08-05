@@ -119,10 +119,15 @@ step for the imps — see the design notes in `README.md`.
 `CreatureAI` uses it; `ImpAI` deliberately does not, because its route selection commits a
 tile claim in the same step and is easier to read as one piece.
 
-Natural next parts, roughly in dependency order: more creature kinds hanging off
-`CreatureCatalog` (the enum and switch are already shaped for it); then combat and hero
-incursions, which is what would finally give creatures something to do; then verticality,
-which the 3D tile array is already shaped for.
+- **Combat and hero raids.** A `HeroGate` room sealed in rock like the portal, `HeroManager`
+  (raid clock, roster, loot stolen and recovered) and `HeroAI` (advance, rob a vault tile,
+  fight, escape). `Battlefield` + `ICombatant` keep creatures and heroes from referencing each
+  other. Heroes steal rather than destroy, so there is still no game-over state.
+
+Natural next parts, roughly in dependency order: more creature and hero kinds, which both
+catalogs are already shaped for; a dungeon heart that can actually be lost, which is the point
+at which the game needs a win/lose state; then verticality, which the 3D tile array is already
+shaped for.
 
 ## Workflow
 Follow the usual approach: work independently, self-fix compile/runtime

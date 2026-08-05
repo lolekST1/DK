@@ -121,6 +121,9 @@ public static class TestHarness
         // --- portal, creatures and payroll ------------------------------------
         PortalChecks();
 
+        // --- heroes, raids and combat -----------------------------------------
+        CombatChecks();
+
         Console.WriteLine(_failures == 0
             ? "\nAll checks passed."
             : $"\n{_failures} check(s) FAILED.");
@@ -692,6 +695,186 @@ public static class TestHarness
         Check(stillClaimed == 0, $"no dig claim outlived the tile it was on ({stillClaimed} left)");
     }
 
+    // ------------------------------------------------------------------ combat
+
+    static readonly MethodInfo HeroUpdate =
+        typeof(HeroAI).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    static readonly MethodInfo HeroManagerUpdate =
+        typeof(HeroManager).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    static void CombatChecks()
+    {
+        var world = NewWorld("Raid", 1337);
+        var grid = world.Grid;
+        var rooms = world.Rooms;
+
+        var battlefield = new GameObject("RaidBattlefield").AddComponent<Battlefield>();
+
+        // A one-tile portal beside the starting chamber, so creatures can be spawned on demand.
+        var portalCell = new Vector2Int(13, 10);
+        grid.CarveChamber(portalCell, 0);
+        rooms.BuildPortal(portalCell, 0);
+
+        // The hero gate, sealed in rock in the far corner.
+        var gateCell = new Vector2Int(5, 5);
+        grid.CarveChamber(gateCell, 1);
+        rooms.BuildHeroGate(gateCell, 1);
+
+        Check(rooms.HasHeroGate, "the map starts with a hero gate");
+        Check(rooms.HeroGateCell == gateCell, "the gate knows where it is");
+        Check(!rooms.CanSell(gateCell.x, gateCell.y), "the hero gate cannot be sold off");
+
+        var creatures = new GameObject("RaidCreatures").AddComponent<CreatureManager>();
+        creatures.Configure(grid, rooms, world.Economy, battlefield);
+
+        var heroes = new GameObject("RaidHeroes").AddComponent<HeroManager>();
+        heroes.FirstRaidDelay = 1f;
+        heroes.RaidInterval = 1000f;
+        heroes.Configure(grid, rooms, world.Economy, world.Spillage, battlefield);
+
+        // --- sealed gate ------------------------------------------------------
+        StepRaidClock(heroes, 5f);
+        Check(!heroes.GateReachable, "a gate walled off from the heart is not reachable");
+        Check(heroes.HeroCount == 0, "no raid comes through a sealed gate");
+        Check(heroes.SecondsToRaid < 0f, "and no raid clock is running yet");
+
+        // --- dig through to it ------------------------------------------------
+        foreach (var cell in new[]
+                 {
+                     new Vector2Int(7, 8), new Vector2Int(6, 8), new Vector2Int(5, 8),
+                     new Vector2Int(5, 7),
+                 })
+            grid.CarveChamber(cell, 0);
+
+        StepRaidClock(heroes, 0.2f);
+        Check(heroes.GateReachable, "digging through to the gate opens it");
+
+        StepRaidClock(heroes, 1.5f);
+        Check(heroes.HeroCount == 1, $"a raid came through ({heroes.HeroCount} hero)");
+
+        var hero = heroes.Heroes[0];
+        Check(hero.CurrentCell == gateCell, "the hero starts on the gate");
+        Check(battlefield.CountOf(Side.Hero) == 1, "the battlefield knows about it");
+
+        // --- an undefended dungeon gets robbed ---------------------------------
+        int vaultBefore = world.Economy.Gold;
+        float robbed = RunHeroUntil(hero, () => hero.CarriedGold > 0, 300f);
+        Check(robbed > 0f, $"the hero walked in and helped itself to the vault ({robbed:0.0}s)");
+
+        int loot = hero.CarriedGold;
+        Check(world.Economy.Gold == vaultBefore - loot,
+            $"the gold left the books the moment it was lifted ({vaultBefore} -> {world.Economy.Gold})");
+
+        // --- killed while carrying, and the loot hits the floor ----------------
+        hero.TakeDamage(10000, null);
+        Check(!hero.IsAlive, "a hero can be killed");
+
+        StepRaidClock(heroes, 0.2f);
+        Check(heroes.Repelled == 1, "the kill is counted");
+        Check(heroes.Escaped == 0 && heroes.GoldStolen == 0, "and nothing was carried out");
+        Check(heroes.HeroCount == 0, "the hero is off the roster");
+        Check(world.Spillage.Total == loot, $"its loot is on the dungeon floor ({world.Spillage.Total})");
+        Check(heroes.GoldRecovered == loot, "and the recovery is counted");
+
+        // --- a defended dungeon kills the next one -----------------------------
+        for (int i = 0; i < 4; i++) creatures.Spawn();
+        Check(battlefield.CountOf(Side.Dungeon) == 4, "four defenders on the battlefield");
+
+        heroes.Raid();
+        var defended = heroes.Heroes[0];
+
+        float fought = RunBattleUntil(heroes, creatures, () => heroes.HeroCount == 0, 400f);
+        Check(fought > 0f, $"the raid was met and put down ({fought:0.0}s)");
+        Check(heroes.Repelled == 2, "the defenders got the credit");
+        Check(heroes.Escaped == 0, "nothing walked back out of the gate");
+        Check(!defended.HasEscaped, "and the hero certainly did not");
+
+        // --- with nobody home, an escape is a real loss ------------------------
+        foreach (var creature in new List<CreatureAI>(creatures.Creatures))
+            creature.TakeDamage(1000, null);
+        StepBattle(heroes, creatures, 0.2f);
+        Check(creatures.CreatureCount == 0, "the defenders are gone for the third raid");
+        Check(battlefield.CountOf(Side.Dungeon) == 0, "and off the battlefield with them");
+
+        heroes.Raid();
+        var third = heroes.Heroes[0];
+
+        int beforeEscape = world.Economy.Gold;
+        float stole = RunHeroUntil(third, () => third.HasEscaped, 400f);
+        Check(stole > 0f, $"an unopposed hero carried the loot back out ({stole:0.0}s)");
+
+        int taken = third.CarriedGold;
+        StepRaidClock(heroes, 0.2f);
+        Check(heroes.Escaped == 1, "the escape is counted");
+        Check(heroes.GoldStolen == taken, $"and the loss is recorded ({heroes.GoldStolen} gold)");
+        Check(world.Economy.Gold == beforeEscape - taken, "the vault is lighter by exactly that much");
+
+        // --- the battlefield only ever points at the other side ----------------
+        var lone = new GameObject("Lone").AddComponent<CreatureAI>();
+        lone.Configure(grid, rooms, battlefield, CreatureKind.Beetle,
+                       new GameObject("LoneBody").transform, null, grid.BaseCell);
+        Check(!battlefield.TryFindNearestEnemy(lone, int.MaxValue, out _),
+            "a dungeon creature finds no enemy when there are no heroes");
+    }
+
+    /// <summary>Runs the raid clock only, leaving the heroes themselves standing still.</summary>
+    static void StepRaidClock(HeroManager heroes, float seconds)
+    {
+        int steps = (int)(seconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++) HeroManagerUpdate.Invoke(heroes, null);
+    }
+
+    static void StepHeroManager(HeroManager heroes, float seconds)
+    {
+        int steps = (int)(seconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+        {
+            HeroManagerUpdate.Invoke(heroes, null);
+            foreach (var hero in heroes.Heroes) HeroUpdate.Invoke(hero, null);
+        }
+    }
+
+    static float RunHeroUntil(HeroAI hero, Func<bool> done, float timeoutSeconds)
+    {
+        int steps = (int)(timeoutSeconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+        {
+            HeroUpdate.Invoke(hero, null);
+            if (done()) return (i + 1) * Time.deltaTime;
+        }
+        return -1f;
+    }
+
+    static void StepBattle(HeroManager heroes, CreatureManager creatures, float seconds)
+    {
+        int steps = (int)(seconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++) TickBattle(heroes, creatures);
+    }
+
+    static float RunBattleUntil(HeroManager heroes, CreatureManager creatures,
+                                Func<bool> done, float timeoutSeconds)
+    {
+        int steps = (int)(timeoutSeconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+        {
+            TickBattle(heroes, creatures);
+            if (done()) return (i + 1) * Time.deltaTime;
+        }
+        return -1f;
+    }
+
+    static void TickBattle(HeroManager heroes, CreatureManager creatures)
+    {
+        for (int i = heroes.Heroes.Count - 1; i >= 0; i--) HeroUpdate.Invoke(heroes.Heroes[i], null);
+        for (int i = creatures.Creatures.Count - 1; i >= 0; i--)
+            CreatureUpdate.Invoke(creatures.Creatures[i], null);
+
+        // The rosters are what retire the dead and hand back their lairs.
+        HeroManagerUpdate.Invoke(heroes, null);
+        ManagerUpdate.Invoke(creatures, null);
+    }
+
     // ------------------------------------------------------------------ portal
 
     static readonly MethodInfo CreatureUpdate =
@@ -723,7 +906,8 @@ public static class TestHarness
         var manager = new GameObject("PortalManager").AddComponent<CreatureManager>();
         manager.SpawnInterval = 1f;
         manager.PaydayInterval = 1000f;
-        manager.Configure(grid, rooms, economy);
+        var battlefield = new GameObject("PortalBattlefield").AddComponent<Battlefield>();
+        manager.Configure(grid, rooms, economy, battlefield);
 
         // Sealed in rock: nothing arrives however long you wait.
         StepManager(manager, 5f);

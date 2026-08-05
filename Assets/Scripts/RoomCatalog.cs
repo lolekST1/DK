@@ -79,6 +79,17 @@ namespace DK
                         FloorColor = new Color(0.16f, 0.32f, 0.52f),
                     };
 
+                case RoomType.HeroGate:
+                    return new Entry
+                    {
+                        Name = "Hero Gate",
+                        Hotkey = "-",
+                        CostPerTile = 0,
+                        GoldCapacityPerTile = 0,
+                        PlayerBuildable = false,
+                        FloorColor = new Color(0.58f, 0.58f, 0.62f),
+                    };
+
                 default:
                     return new Entry
                     {

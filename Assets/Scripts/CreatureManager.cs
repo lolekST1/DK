@@ -28,6 +28,7 @@ namespace DK
         GridManager _grid;
         RoomManager _rooms;
         ResourceManager _economy;
+        Battlefield _battlefield;
         Transform _root;
 
         readonly List<CreatureAI> _creatures = new List<CreatureAI>();
@@ -50,6 +51,9 @@ namespace DK
         /// <summary>Creatures that gave up and walked back out of the portal.</summary>
         public int Departed { get; private set; }
 
+        /// <summary>Creatures killed defending the dungeon.</summary>
+        public int Fallen { get; private set; }
+
         public float SecondsToPayday => Mathf.Max(0f, _paydayTimer);
 
         /// <summary>True once a dug route joins the portal to the heart.</summary>
@@ -64,11 +68,13 @@ namespace DK
         /// <summary>Raised when one walks out. Carries the reason it gave up.</summary>
         public event Action<CreatureAI, string> CreatureLeft;
 
-        public void Configure(GridManager grid, RoomManager rooms, ResourceManager economy)
+        public void Configure(GridManager grid, RoomManager rooms, ResourceManager economy,
+                              Battlefield battlefield)
         {
             _grid = grid;
             _rooms = rooms;
             _economy = economy;
+            _battlefield = battlefield;
 
             _root = new GameObject("Creatures").transform;
             _root.SetParent(transform, false);
@@ -208,7 +214,7 @@ namespace DK
                 MaterialLibrary.CreateLit("DK_CreatureShell", new Color(0.14f, 0.20f, 0.16f));
 
             var creature = root.AddComponent<CreatureAI>();
-            creature.Configure(_grid, _rooms, Kind, body.transform, renderer, cell);
+            creature.Configure(_grid, _rooms, _battlefield, Kind, body.transform, renderer, cell);
             return creature;
         }
 
@@ -225,12 +231,16 @@ namespace DK
                     continue;
                 }
 
-                if (!creature.HasLeft) continue;
+                if (!creature.HasLeft && creature.IsAlive) continue;
 
-                string reason = creature.MissedPaydays > 0 ? "unpaid" : "nowhere to sleep";
+                string reason = !creature.IsAlive ? "killed"
+                              : creature.MissedPaydays > 0 ? "unpaid"
+                              : "nowhere to sleep";
+
+                if (!creature.IsAlive) Fallen++;
+                else Departed++;
 
                 _creatures.RemoveAt(i);
-                Departed++;
 
                 // Give the lair back now rather than leaving it to OnDestroy: Unity does not
                 // destroy the object until the end of the frame, and a lair that stays

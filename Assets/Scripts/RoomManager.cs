@@ -38,6 +38,7 @@ namespace DK
         readonly List<Vector2Int> _storageTiles = new List<Vector2Int>();
         readonly List<Vector2Int> _lairTiles = new List<Vector2Int>();
         readonly List<Vector2Int> _portalTiles = new List<Vector2Int>();
+        readonly List<Vector2Int> _heroGateTiles = new List<Vector2Int>();
 
         // Lair ownership is two-way so selling a tile can evict exactly one imp.
         readonly Dictionary<Vector2Int, object> _lairOwner = new Dictionary<Vector2Int, object>();
@@ -72,6 +73,11 @@ namespace DK
         public Vector2Int PortalCell { get; private set; }
 
         public bool HasPortal => _portalTiles.Count > 0;
+
+        /// <summary>Where heroes come in. Only meaningful once <see cref="HasHeroGate"/>.</summary>
+        public Vector2Int HeroGateCell { get; private set; }
+
+        public bool HasHeroGate => _heroGateTiles.Count > 0;
 
         /// <summary>Raised when gold or capacity moved. Carries (stored, capacity).</summary>
         public event Action<int, int> StorageChanged;
@@ -137,6 +143,24 @@ namespace DK
 
             PortalCell = _grid.IsWalkable(centre.x, centre.y) ? centre : _portalTiles[0];
             BuildPortalCentrepiece(PortalCell);
+        }
+
+        /// <summary>
+        /// Places the hero gate on already-carved floor, the same way the portal goes down.
+        /// Sealed in rock to begin with, so raids are something the player digs their way into.
+        /// </summary>
+        public void BuildHeroGate(Vector2Int centre, int radius)
+        {
+            for (int x = centre.x - radius; x <= centre.x + radius; x++)
+            for (int z = centre.y - radius; z <= centre.y + radius; z++)
+            {
+                if (!_grid.IsWalkable(x, z)) continue;
+                SetRoom(x, z, RoomType.HeroGate);
+            }
+
+            if (!HasHeroGate) return;
+
+            HeroGateCell = _grid.IsWalkable(centre.x, centre.y) ? centre : _heroGateTiles[0];
         }
 
         void BuildPortalCentrepiece(Vector2Int centre)
@@ -323,6 +347,9 @@ namespace DK
             if (type == RoomType.Lair) _lairTiles.Add(cell);
             if (type == RoomType.Portal) _portalTiles.Add(cell);
             if (previous == RoomType.Portal) _portalTiles.Remove(cell);
+
+            if (type == RoomType.HeroGate) _heroGateTiles.Add(cell);
+            if (previous == RoomType.HeroGate) _heroGateTiles.Remove(cell);
 
             UpdateSlab(x, z);
             UpdatePile(x, z);

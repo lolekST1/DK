@@ -9,6 +9,7 @@ namespace DK
         GoingToLair,
         Sleeping,
         Wandering,
+        Fighting,
         Leaving,
     }
 
@@ -21,7 +22,7 @@ namespace DK
     /// to the portal and is gone. Digging is what pays for both, which is the whole point —
     /// the creature layer is what gives the gold somewhere to go.
     /// </summary>
-    public class CreatureAI : MonoBehaviour
+    public class CreatureAI : MonoBehaviour, ICombatant
     {
         public CreatureKind Kind { get; private set; } = CreatureKind.Beetle;
 
@@ -40,10 +41,24 @@ namespace DK
 
         public bool HasLair => _rooms != null && _rooms.HasLair(this);
 
+        public int Health { get; private set; }
+
+        public int MaxHealth => _stats.Health;
+
+        public bool IsAlive => Health > 0;
+
+        Side ICombatant.Side => Side.Dungeon;
+
+        Vector2Int ICombatant.Cell => CurrentCell;
+
+        Vector3 ICombatant.Position => transform.position;
+
         public float TurnSpeed = 12f;
 
         GridManager _grid;
         GridWalker _walker;
+        Battlefield _battlefield;
+        ICombatant _enemy;
         RoomManager _rooms;
         Renderer _bodyRenderer;
         Transform _body;
@@ -56,16 +71,19 @@ namespace DK
         float _decisionCooldown;
         float _bobPhase;
         float _bodyBaseY;
+        float _swingTimer;
         int _wanderSeed;
 
         static readonly Color CalmTint = new Color(1f, 1f, 1f);
         static readonly Color FuriousTint = new Color(1.6f, 0.55f, 0.45f);
 
-        public void Configure(GridManager grid, RoomManager rooms, CreatureKind kind,
-                              Transform body, Renderer bodyRenderer, Vector2Int spawnCell)
+        public void Configure(GridManager grid, RoomManager rooms, Battlefield battlefield,
+                              CreatureKind kind, Transform body, Renderer bodyRenderer,
+                              Vector2Int spawnCell)
         {
             _grid = grid;
             _rooms = rooms;
+            _battlefield = battlefield;
             Kind = kind;
             _stats = CreatureCatalog.Get(kind);
             _body = body;
@@ -83,6 +101,9 @@ namespace DK
                 TurnSpeed = TurnSpeed,
             };
 
+            Health = _stats.Health;
+            if (_battlefield != null) _battlefield.Register(this);
+
             _wanderSeed = GetHashCode();
             transform.position = grid.CellToWorld(_fallbackHome);
             ApplyMoodTint();
@@ -91,6 +112,19 @@ namespace DK
         void OnDestroy()
         {
             if (_rooms != null) _rooms.UnregisterWorker(this);
+            if (_battlefield != null) _battlefield.Unregister(this);
+        }
+
+        /// <summary>Takes a hit. A creature that dies is cleaned up by the manager.</summary>
+        public void TakeDamage(int amount, ICombatant from)
+        {
+            if (amount <= 0 || !IsAlive) return;
+
+            Health = Mathf.Max(0, Health - amount);
+
+            // Being hit is reason enough to stop sleeping and turn round.
+            if (IsAlive && State != CreatureState.Leaving && from != null && from.IsAlive)
+                Engage(from);
         }
 
         public Vector2Int CurrentCell => _grid.WorldToCell(transform.position);
@@ -139,6 +173,9 @@ namespace DK
                 case CreatureState.Wandering:
                     TickWandering(dt);
                     break;
+                case CreatureState.Fighting:
+                    TickFighting(dt);
+                    break;
                 case CreatureState.Leaving:
                     TickLeaving(dt);
                     break;
@@ -150,6 +187,9 @@ namespace DK
         void UpdateNeeds(float dt)
         {
             if (State == CreatureState.Leaving) return;
+
+            // Wages and sleep can wait while there is a hero in the dungeon.
+            if (State == CreatureState.Fighting) return;
 
             if (State == CreatureState.Sleeping)
                 Fatigue = Mathf.Clamp01(Fatigue - _stats.RestPerSecond * dt);
@@ -182,6 +222,8 @@ namespace DK
             _decisionCooldown -= Time.deltaTime;
             if (_decisionCooldown > 0f) return;
             _decisionCooldown = 0.4f;
+
+            if (TryFindFight()) return;
 
             // Reading home is also what moves a creature into a lair the player just built.
             var home = HomeCell;
@@ -219,6 +261,9 @@ namespace DK
 
         void TickSleeping(float dt)
         {
+            // Worth waking up for.
+            if (TryFindFight()) return;
+
             // A lair sold out from under it wakes it up, which is the player's problem.
             if (!HasLair || Fatigue <= 0f)
             {
@@ -229,6 +274,8 @@ namespace DK
 
         void TickWandering(float dt)
         {
+            if (TryFindFight()) return;
+
             if (Fatigue >= 1f && HasLair)
             {
                 State = CreatureState.Idle;
@@ -249,6 +296,63 @@ namespace DK
             // Reached the portal, or could not path to it at all. Either way it is done here:
             // a creature stuck forever in a walled-off dungeon would just accumulate.
             HasLeft = true;
+        }
+
+        void TickFighting(float dt)
+        {
+            if (_enemy == null || !_enemy.IsAlive)
+            {
+                _enemy = null;
+                _walker.Stop();
+                State = CreatureState.Idle;
+                _decisionCooldown = 0f;
+                return;
+            }
+
+            if (Battlefield.InReach(this, _enemy))
+            {
+                _walker.Stop();
+                _walker.FaceTowards(_enemy.Position, dt);
+
+                _swingTimer -= dt;
+                if (_swingTimer > 0f) return;
+
+                _swingTimer = _stats.AttackInterval;
+                _enemy.TakeDamage(_stats.Damage, this);
+                return;
+            }
+
+            if (_walker.Advance(dt)) return;
+
+            // It moved. Chase it, and give up if it got somewhere we cannot follow.
+            if (!_walker.SetPath(_enemy.Cell))
+            {
+                _enemy = null;
+                State = CreatureState.Idle;
+                _decisionCooldown = 0f;
+            }
+        }
+
+        /// <summary>Looks for a hero worth walking to, and commits to it if there is one.</summary>
+        bool TryFindFight()
+        {
+            if (_battlefield == null || State == CreatureState.Leaving) return false;
+            if (!_battlefield.TryFindNearestEnemy(this, _stats.AlertRange, out var enemy)) return false;
+
+            return Engage(enemy);
+        }
+
+        bool Engage(ICombatant enemy)
+        {
+            if (enemy == null || !enemy.IsAlive) return false;
+
+            // Already next to it: no route needed, just start swinging.
+            if (!Battlefield.InReach(this, enemy) && !_walker.SetPath(enemy.Cell)) return false;
+
+            _enemy = enemy;
+            _swingTimer = 0f;
+            State = CreatureState.Fighting;
+            return true;
         }
 
         // ---------------------------------------------------------------- helpers

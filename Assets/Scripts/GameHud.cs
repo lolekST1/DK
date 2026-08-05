@@ -31,6 +31,7 @@ namespace DK
         readonly Line _status = new Line();
         readonly List<ToolButton> _toolButtons = new List<ToolButton>();
         CreatureManager _creatures;
+        HeroManager _heroes;
 
         float _refreshTimer;
 
@@ -94,8 +95,10 @@ namespace DK
         }
 
         public void Configure(ResourceManager resources, RoomManager rooms, PlayerTools tools,
-                              IReadOnlyList<ImpAI> imps, CreatureManager creatures)
+                              IReadOnlyList<ImpAI> imps, CreatureManager creatures,
+                              HeroManager heroes)
         {
+            _heroes = heroes;
             _resources = resources;
             _rooms = rooms;
             _tools = tools;
@@ -182,6 +185,9 @@ namespace DK
                 Builder.Append("   Payday ").Append(Mathf.CeilToInt(_creatures.SecondsToPayday)).Append('s');
             }
 
+            if (_heroes != null && _heroes.GoldStolen > 0)
+                Builder.Append("   Stolen ").Append(_heroes.GoldStolen);
+
             _gold.Set(Builder.ToString());
         }
 
@@ -244,6 +250,20 @@ namespace DK
             if (_tools != null && _tools.CurrentTool != PlayerTool.Dig && _tools.HoverRefusal != null)
                 return "Cannot place here: " + _tools.HoverRefusal;
 
+            // A raid outranks every slow problem: it is the only one with a clock on it.
+            if (_heroes != null && _heroes.HeroCount > 0)
+            {
+                int loot = 0;
+                for (int i = 0; i < _heroes.Heroes.Count; i++)
+                    if (_heroes.Heroes[i] != null) loot += _heroes.Heroes[i].CarriedGold;
+
+                return loot > 0
+                    ? "Heroes in the dungeon — one is carrying off " + loot +
+                      " gold. Kill it and the loot drops."
+                    : "Heroes in the dungeon! " + _heroes.HeroCount +
+                      " raiding for your vault. Creatures defend it.";
+            }
+
             // Creatures walking out is the most expensive thing that can be going wrong.
             if (_creatures != null && _creatures.CreatureCount > 0 &&
                 _resources != null && _resources.Gold < WageBill())
@@ -271,6 +291,11 @@ namespace DK
 
             if (_rooms != null && _rooms.LairCount == 0)
                 return "No lair yet. Imps with a lair dig faster [3].";
+
+            // Only worth saying before the first raid, while it is still news.
+            if (_heroes != null && _heroes.GateReachable && _heroes.Escaped + _heroes.Repelled == 0)
+                return "You have dug through to a hero gate. Raids start in " +
+                       Mathf.CeilToInt(_heroes.SecondsToRaid) + "s — house some creatures [3].";
 
             return string.Empty;
         }

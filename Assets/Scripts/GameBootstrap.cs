@@ -24,6 +24,12 @@ namespace DK
         public float PaydayInterval = 45f;
         public int MaxCreatures = 8;
 
+        [Header("Heroes")]
+        public int HeroGateRadius = 1;
+        public float FirstRaidDelay = 45f;
+        public float RaidInterval = 90f;
+        public int MaxHeroes = 4;
+
         [Header("Imps")]
         public int ImpCount = 4;
         public float ImpMoveSpeed = 3.0f;
@@ -35,6 +41,8 @@ namespace DK
         public ResourceManager Economy { get; private set; }
         public IReadOnlyList<ImpAI> Imps { get; private set; }
         public CreatureManager Creatures { get; private set; }
+        public HeroManager Heroes { get; private set; }
+        public Battlefield Battlefield { get; private set; }
         public CameraRig Rig { get; private set; }
         public PlayerTools Tools { get; private set; }
 
@@ -45,7 +53,9 @@ namespace DK
             Rooms = CreateRooms();
             Spillage = CreateLooseGold();
             Economy = CreateResourceManager();
+            Battlefield = CreateBattlefield();
             Creatures = CreateCreatureManager();
+            Heroes = CreateHeroManager();
 
             // Lighting before the rig: the rig keeps the sun in step with its own yaw.
             var sun = CreateLighting();
@@ -91,6 +101,12 @@ namespace DK
             Grid.CarveChamber(portalCell, PortalRadius);
             rooms.BuildPortal(portalCell, PortalRadius);
 
+            // Opposite corner from the portal, so the two things the player digs towards pull
+            // in different directions and one of them bites.
+            var gateCell = new Vector2Int(Grid.Width / 4, Grid.Depth / 4);
+            Grid.CarveChamber(gateCell, HeroGateRadius);
+            rooms.BuildHeroGate(gateCell, HeroGateRadius);
+
             return rooms;
         }
 
@@ -103,8 +119,28 @@ namespace DK
             creatures.SpawnInterval = CreatureSpawnInterval;
             creatures.PaydayInterval = PaydayInterval;
             creatures.MaxCreatures = MaxCreatures;
-            creatures.Configure(Grid, Rooms, Economy);
+            creatures.Configure(Grid, Rooms, Economy, Battlefield);
             return creatures;
+        }
+
+        Battlefield CreateBattlefield()
+        {
+            var go = new GameObject("Battlefield");
+            go.transform.SetParent(transform, false);
+            return go.AddComponent<Battlefield>();
+        }
+
+        HeroManager CreateHeroManager()
+        {
+            var go = new GameObject("HeroManager");
+            go.transform.SetParent(transform, false);
+
+            var heroes = go.AddComponent<HeroManager>();
+            heroes.FirstRaidDelay = FirstRaidDelay;
+            heroes.RaidInterval = RaidInterval;
+            heroes.MaxHeroes = MaxHeroes;
+            heroes.Configure(Grid, Rooms, Economy, Spillage, Battlefield);
+            return heroes;
         }
 
         GridManager CreateGrid()
@@ -262,7 +298,7 @@ namespace DK
         {
             var go = new GameObject("HUD");
             go.transform.SetParent(transform, false);
-            go.AddComponent<GameHud>().Configure(Economy, Rooms, Tools, Imps, Creatures);
+            go.AddComponent<GameHud>().Configure(Economy, Rooms, Tools, Imps, Creatures, Heroes);
         }
     }
 }

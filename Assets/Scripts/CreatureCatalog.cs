@@ -38,6 +38,18 @@ namespace DK
             /// <summary>Anger shed per second once it is both housed and paid up.</summary>
             public float CalmPerSecond;
 
+            /// <summary>Damage it can absorb before it dies.</summary>
+            public int Health;
+
+            /// <summary>Damage dealt per swing.</summary>
+            public int Damage;
+
+            /// <summary>Seconds between swings.</summary>
+            public float AttackInterval;
+
+            /// <summary>How far off it will notice a hero, in tiles.</summary>
+            public int AlertRange;
+
             public Color Skin;
         }
 
@@ -65,6 +77,14 @@ namespace DK
                         HomelessAngerPerSecond = 1f / 120f,
                         AngerPerMissedWage = 0.34f,
                         CalmPerSecond = 1f / 30f,
+
+                        // One beetle loses to a knight and two win, so defending the dungeon is
+                        // about how many creatures you can house and pay, not about one hero
+                        // being a formality.
+                        Health = 60,
+                        Damage = 6,
+                        AttackInterval = 1.0f,
+                        AlertRange = 8,
 
                         Skin = new Color(0.30f, 0.52f, 0.34f),
                     };
