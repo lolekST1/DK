@@ -827,6 +827,18 @@ public static class TestHarness
         float noticed = RunDuelUntil(hero, beetle, () => beetle.State == CreatureState.Fighting, 10f);
         Check(noticed > 0f, $"the creature set off after a hero right across the dungeon ({noticed:0.0}s)");
 
+        // Chasing re-lays the route several times a second. Each of those used to restart it
+        // at the centre of the cell the creature was halfway out of, so it rocked back and
+        // forth on the spot instead of closing in. Measure the ground it covers, not its state.
+        float chaseSpeed = CreatureCatalog.Get(CreatureKind.Beetle).MoveSpeed;
+        float gapBefore = FlatDistance(beetle.transform.position, hero.transform.position);
+
+        StepCreature(beetle, 3f);
+
+        float closed = gapBefore - FlatDistance(beetle.transform.position, hero.transform.position);
+        Check(closed > chaseSpeed * 3f * 0.6f,
+            $"the chase covers ground ({closed:0.0} of a possible {chaseSpeed * 3f:0.0} in 3s)");
+
         float reached = RunDuelUntil(hero, beetle, () => beetle.Health < CreatureCatalog.Get(CreatureKind.Beetle).Health
                                                       || hero.Health < HeroCatalog.Get(HeroKind.Knight).Health, 90f);
         Check(reached > 0f, $"and got close enough to actually trade blows ({reached:0.0}s)");
@@ -901,6 +913,13 @@ public static class TestHarness
         Check(finish > 0f, $"the second beetle got there ({finish:0.0}s)");
         Check(!hero.IsAlive, "two beetles arriving one after the other kill a knight");
         Check(second.IsAlive, "and the second one lives to tell it");
+    }
+
+    static float FlatDistance(Vector3 a, Vector3 b)
+    {
+        float dx = a.x - b.x;
+        float dz = a.z - b.z;
+        return (float)Math.Sqrt(dx * dx + dz * dz);
     }
 
     static HeroAI NewHero(World world, Battlefield battlefield, Vector2Int cell)

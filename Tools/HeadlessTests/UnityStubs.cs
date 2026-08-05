@@ -34,7 +34,17 @@ namespace UnityEngine
         public Vector3(float x, float y, float z) { this.x = x; this.y = y; this.z = z; }
         public float sqrMagnitude => x * x + y * y + z * z;
         public float magnitude => (float)Math.Sqrt(sqrMagnitude);
-        public Vector3 normalized => this;
+        // Actually normalises. Returning `this` made every walker crawl to a halt as it
+        // approached a waypoint — step length was scaled by the remaining distance — which
+        // is a movement bug that only ever existed in the tests.
+        public Vector3 normalized
+        {
+            get
+            {
+                float length = magnitude;
+                return length > 1e-5f ? new Vector3(x / length, y / length, z / length) : zero;
+            }
+        }
         public static Vector3 up => new Vector3(0, 1, 0);
         public static Vector3 back => new Vector3(0, 0, -1);
         public static Vector3 zero => new Vector3(0, 0, 0);
@@ -321,7 +331,15 @@ namespace UnityEngine
         public static Color ambientLight;
     }
 
-    public static class QualitySettings { public static Rendering.RenderPipelineAsset renderPipeline; }
+    public static class QualitySettings
+    {
+        public static Rendering.RenderPipelineAsset renderPipeline;
+        public static int antiAliasing;
+        public static float shadowDistance;
+        public static int pixelLightCount;
+        public static string[] names => new string[0];
+        public static void SetQualityLevel(int level, bool applyExpensiveChanges) { }
+    }
 
     [AttributeUsage(AttributeTargets.Field)] public class HeaderAttribute : Attribute { public HeaderAttribute(string h) { } }
     [AttributeUsage(AttributeTargets.Field)] public class RangeAttribute : Attribute { public RangeAttribute(float a, float b) { } }

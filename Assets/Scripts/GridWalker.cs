@@ -35,11 +35,21 @@ namespace DK
         /// <summary>True while there are waypoints left to walk.</summary>
         public bool HasPath => _index < _path.Count;
 
-        /// <summary>Routes from the current cell. False when there is no way through.</summary>
+        /// <summary>
+        /// Routes to a goal. False when there is no way through, and the route is cleared.
+        ///
+        /// Mid-stride it routes from the cell being walked *into*, not the one being left, and
+        /// that step stays at the front. Routing from the cell behind would put its centre —
+        /// a point already passed — at the head of the new route, so a chase that re-routes
+        /// several times a second walks backwards as often as forwards. That is what made
+        /// creatures rock on the spot in front of a hero instead of closing on it.
+        /// </summary>
         public bool SetPath(Vector2Int goal)
         {
+            var from = HasPath ? _path[_index] : CurrentCell;
+
             _index = 0;
-            return Pathfinder.TryFindPath(_grid, CurrentCell, goal, _path);
+            return Pathfinder.TryFindPath(_grid, from, goal, _path);
         }
 
         /// <summary>Whether a route exists, without committing to walking it.</summary>
