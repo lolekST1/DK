@@ -47,11 +47,14 @@ namespace DK
                     {
                         Name = "Lord of the Land",
 
-                        // Four beetles arriving one at a time lose to it; four together win
-                        // with losses. It is meant to be the fight the whole dungeon was for,
-                        // and to be unwinnable by a keeper who never housed anybody.
-                        Health = 320,
-                        Damage = 14,
+                        // Tuned against the case that actually happens: defenders are asleep
+                        // in lairs dotted about the map, so they arrive one at a time and fight
+                        // him one at a time. Each beetle gets about 60 damage in before it dies,
+                        // so this takes five of them in a queue — comfortable for a housed
+                        // dungeon, hopeless for a keeper with three. At 320 and 14 it took
+                        // seven, which is nearly the whole roster with nothing to spare.
+                        Health = 280,
+                        Damage = 12,
                         AttackInterval = 1.3f,
                         MoveSpeed = 2.2f,
 

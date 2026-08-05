@@ -24,8 +24,11 @@ namespace DK
         /// </summary>
         public float PaydayInterval = 60f;
 
-        /// <summary>Hard ceiling, so a huge lair block cannot spawn an unbounded crowd.</summary>
-        public int MaxCreatures = 8;
+        /// <summary>
+        /// Hard ceiling, so a huge lair block cannot spawn an unbounded crowd. Kept above what
+        /// the last stand needs, so lairs — which cost gold and floor — are the real limit.
+        /// </summary>
+        public int MaxCreatures = 10;
 
         public CreatureKind Kind = CreatureKind.Beetle;
 

@@ -118,8 +118,9 @@ it, takes what it can carry and heads back to the gate.
 
 Survive five of those and the sixth wave is the **Lord of the Land**, who walks past the vault
 and swings at the dungeon heart instead. Kill him and you have won; let the heart fall and the
-run ends there. The heart takes about forty seconds of his attention to break, which is the
-time you have to get everything you have housed across the map. Creatures leave their lairs to
+run ends there. He is balanced against defenders arriving one at a time, because that is what
+happens — they are asleep in lairs dotted about the map. Each beetle gets about sixty damage in
+before he kills it, so a queue of five finishes him. Meeting him together is much cheaper. Creatures leave their lairs to
 intercept it from anywhere in the dungeon, breaking off whatever they were doing — which in
 practice means arriving one at a time: one beetle loses to a knight but
 leaves it under half health, so the second one through the door finishes it. Arriving together
@@ -305,6 +306,11 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   crew of six digs for two simulated minutes, and what they bank has to beat the wage bill for
   a full house over the same stretch, with half again on top so a raid does not tip it over.
   It fails at the old numbers.
+- **The last stand** — the fight the whole economy pays for, measured rather than reasoned
+  about. Four to nine defenders, bunched at the heart or ringed twelve tiles out, with and
+  without three knights still inside; and then the case the matrix missed and the player hit,
+  beetles arriving strictly one at a time. That last one is the tight one, so it is the one the
+  balance is set against.
 - **The endings** — a knight robs the place and leaves the heart untouched, while the Lord
   walks past the vault, takes nothing, and brings the heart down in about forty seconds, which
   loses the run. Kill him instead and it is won. The structure rule is checked directly: a

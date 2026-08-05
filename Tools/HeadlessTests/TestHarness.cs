@@ -742,12 +742,62 @@ public static class TestHarness
                               $"{outcome,-15} in {seconds,3:0}s ({survivors} left, heart {heartLeft})");
         }
 
+        // Strictly one at a time: the next only sets off once the last one is dead. This is
+        // what the player actually saw, and what the ringed matrix above never tested.
+        int spent = RunSequentialStand(out int lordLeft, out int perBeetle);
+        Console.WriteLine($"    one at a time: {spent} beetles spent, Lord on {lordLeft}, " +
+                          $"~{perBeetle} damage each");
+
+        // Well inside a full roster: arriving in a queue is the normal case, so it must not
+        // need every creature the dungeon can house.
+        Check(spent > 0 && spent <= 6,
+            $"a queue of beetles arriving one at a time kills the Lord with room to spare (took {spent})");
+
         // Scattered across the dungeon is the normal case: creatures sleep in their lairs and
         // come when the Lord turns up, so they arrive strung out rather than as a wall.
         var nine = RunLastStand(9, 12, 0, out _, out int leftAtNine, out int heartAtNine);
         Check(nine == "lord dead", $"nine creatures spread over the dungeon still put the Lord down (got: {nine})");
         Check(heartAtNine > 0, $"with the heart still standing ({heartAtNine})");
         Check(leftAtNine > 0, "and somebody left alive to hold it");
+    }
+
+    /// <summary>
+    /// Feeds beetles to the Lord one at a time, each starting only once the last has died.
+    /// Returns how many it took, or 0 if a dozen were not enough.
+    /// </summary>
+    static int RunSequentialStand(out int lordLeft, out int damagePerBeetle)
+    {
+        var world = OpenGateWorld("Sequential", out var field, out var heart, out var heroes);
+        heroes.WavesBeforeLord = 0;
+
+        for (int x = 0; x < world.Grid.Width; x++)
+        for (int z = 0; z < world.Grid.Depth; z++)
+            world.Grid.CarveChamber(new Vector2Int(x, z), 0);
+
+        heroes.Raid();
+        var lord = heroes.Heroes[0];
+
+        int startingHealth = lord.Health;
+        int spent = 0;
+
+        for (int i = 0; i < 12 && lord.IsAlive && heart.IsAlive; i++)
+        {
+            var cell = new Vector2Int(world.Grid.BaseCell.x + 1, world.Grid.BaseCell.y);
+            var beetle = NewBeetle(world, field, field, cell);
+            spent++;
+
+            int steps = (int)(120f / Time.deltaTime);
+            for (int step = 0; step < steps; step++)
+            {
+                HeroUpdate.Invoke(lord, null);
+                CreatureUpdate.Invoke(beetle, null);
+                if (!beetle.IsAlive || !lord.IsAlive || !heart.IsAlive) break;
+            }
+        }
+
+        lordLeft = lord.Health;
+        damagePerBeetle = spent > 0 ? (startingHealth - lord.Health) / spent : 0;
+        return lord.IsAlive ? 0 : spent;
     }
 
     static string RunLastStand(int defenders, int spread, int knights, out float seconds,
