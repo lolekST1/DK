@@ -262,8 +262,12 @@ namespace DK
             if (_rooms != null && _rooms.LairCount == 0)
                 return "No lair yet. Imps with a lair dig faster [3].";
 
+            if (_resources != null && _resources.LooseGold > 0)
+                return _resources.LooseGold + " gold is lying on the floor. Imps fetch it once " +
+                       "there is vault space [2].";
+
             if (_resources != null && _resources.TotalSpilled > 0)
-                return "Spilled " + _resources.TotalSpilled + " gold with nowhere to store it.";
+                return "Dropped " + _resources.TotalSpilled + " gold on the floor over the run.";
 
             return string.Empty;
         }

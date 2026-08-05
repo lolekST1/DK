@@ -45,7 +45,9 @@ imps dig it. A gold seam does **not** credit a counter — the imp picks the gol
 to the nearest vault tile with room, and drops it there, so the heart fills up fast and you
 have to spend your opening 100 gold on a treasury. An imp that finds every vault full waits
 about eight seconds and then dumps its load on the floor, which the HUD reports as spilled
-gold. Build a lair and an imp moves in on its own; imps with somewhere to sleep dig 30% faster.
+gold — but not gold lost: the pile stays on the floor, and an imp comes back for it the moment
+you make room in the vault. Build a lair and an imp moves in on its own; imps with somewhere to
+sleep dig 30% faster.
 
 The portal sits in a sealed cavern three quarters of the way across the map. Dig a route to it
 and creatures start arriving — but only while a lair is standing empty, and imps sleep in the
@@ -78,6 +80,7 @@ Assets/Scripts/
   GridManager.cs      Terrain: tile states, dig queue, per-tile claims, block visuals
   RoomManager.cs      Rooms on top of terrain: heart, vault gold, lair ownership, slabs
   RoomCatalog.cs      Cost / capacity / colour per room type — the whole economy balance
+  LooseGold.cs        Gold dropped on the floor: piles, per-pile claims, pickup
   RoomType.cs         None / DungeonHeart / Treasury / Lair / Portal
   CreatureManager.cs  Portal roster: arrivals, payday, departures
   CreatureAI.cs       Idle → GoingToLair → Sleeping / Wandering / Leaving
@@ -117,6 +120,13 @@ ordering rules between them.
 ceiling, and an imp has to walk it there. That is what makes the treasury a real decision
 rather than a cosmetic room, and it is why `ResourceManager` is a facade over `RoomManager`
 instead of holding an int of its own — there is only one copy of the number.
+
+**Dropped is not destroyed.** Gold an imp could not bank stays on the floor as a pile you can
+see, and any imp with vault space to fill will go and fetch it — fetching beats digging in the
+idle check, because gold already out of the rock only needs carrying. Piles are claimed one imp
+at a time, the same way dig targets are, so a spill does not drag the whole crew across the map.
+Deleting the gold instead would have made a full vault a silent, permanent tax on a mistake the
+player can already see and fix.
 
 **A full vault must not look like a bug.** An imp that cannot bank its load drifts home and
 keeps asking, then dumps the gold and goes back to work. Freezing the crew until the player
@@ -191,6 +201,10 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   per-tile deposit ceilings, and selling returning both the stored gold and half the cost.
 - **The haul** — a corridor dug to a gold seam and the load carried back into a vault, with
   the banked total checked to the gold piece.
+- **Spilled gold** — a full vault leaves exactly one pile of the right size on the floor,
+  nobody fetches it while there is still nowhere to put it, and once the vault has room an imp
+  carries it in. Claims are checked directly: two imps cannot hold the same pile, releasing
+  hands it over, and an empty tile cannot be claimed at all.
 - **Solid ground** — a crew of four clears a fully marked map while every imp is checked, on
   every simulated frame, to be standing on dug-out floor. Paths are only ever walked from the
   cell the imp is standing in, and this is what proves it. It also times the run against a

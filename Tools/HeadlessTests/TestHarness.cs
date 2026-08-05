@@ -114,6 +114,9 @@ public static class TestHarness
         // --- nobody ever stands inside rock -----------------------------------
         SolidGroundChecks();
 
+        // --- gold dropped on the floor is not gold lost ------------------------
+        SpilledGoldChecks();
+
         // --- portal, creatures and payroll ------------------------------------
         PortalChecks();
 
@@ -225,12 +228,19 @@ public static class TestHarness
 
         int spilledBefore = world.Economy.TotalSpilled;
         int bankedBefore = world.Economy.Gold;
+        int onFloor = world.Spillage.Total;
+        Check(onFloor == GridManager.GoldPerSeam, $"the dumped load is still lying on the floor ({onFloor})");
+
         world.Grid.MarkForDigging(seam.x, seam.y);
 
-        float second = RunUntil(imp, () => imp.CarriedGold == 0 && world.Grid.QueuedCount == 0, 200f);
-        Check(second > 0f, $"the second seam was mined and hauled in {second:0.0}s");
-        Check(world.Economy.Gold == bankedBefore + GridManager.GoldPerSeam,
-            $"it banked into the new treasury (gold {world.Economy.Gold}, was {bankedBefore})");
+        float second = RunUntil(imp,
+            () => imp.CarriedGold == 0 && world.Grid.QueuedCount == 0 && world.Spillage.Total == 0, 200f);
+        Check(second > 0f, $"the second seam was mined and the floor cleared in {second:0.0}s");
+
+        // The new treasury takes both: the seam just mined, and the pile dropped back when
+        // there was nowhere to put it.
+        Check(world.Economy.Gold == bankedBefore + GridManager.GoldPerSeam + onFloor,
+            $"it banked the new seam and the old spill (gold {world.Economy.Gold}, was {bankedBefore})");
         Check(world.Economy.TotalSpilled == spilledBefore, "nothing spilled once there was room again");
     }
 
@@ -425,6 +435,7 @@ public static class TestHarness
         public GridManager Grid;
         public RoomManager Rooms;
         public ResourceManager Economy;
+        public LooseGold Spillage;
     }
 
     static World NewWorld(string name, int seed)
@@ -437,8 +448,11 @@ public static class TestHarness
         world.Rooms = new GameObject(name + "Rooms").AddComponent<RoomManager>();
         world.Rooms.Configure(world.Grid);
 
+        world.Spillage = new GameObject(name + "Loose").AddComponent<LooseGold>();
+        world.Spillage.Configure(world.Grid);
+
         world.Economy = new GameObject(name + "Economy").AddComponent<ResourceManager>();
-        world.Economy.Configure(world.Rooms);
+        world.Economy.Configure(world.Rooms, world.Spillage);
 
         return world;
     }
@@ -448,9 +462,69 @@ public static class TestHarness
         var imp = new GameObject(name).AddComponent<ImpAI>();
         imp.MoveSpeed = 3f;
         imp.DigDuration = 1.2f;
-        imp.Configure(world.Grid, world.Economy, world.Rooms,
+        imp.Configure(world.Grid, world.Economy, world.Rooms, world.Spillage,
             new GameObject(name + "Body").transform, new GameObject(name + "Nugget").transform, home);
         return imp;
+    }
+
+    // ------------------------------------------------------------ spilled gold
+
+    /// <summary>
+    /// A full vault means an imp drops its load on the floor. That gold has to still be there
+    /// afterwards, and somebody has to come back for it once there is room again.
+    /// </summary>
+    static void SpilledGoldChecks()
+    {
+        var world = NewWorld("Spill", 1337);
+
+        // Fill the heart to the brim, so the first seam mined has nowhere to go.
+        world.Rooms.DepositAnywhere(1000);
+        Check(world.Rooms.FreeCapacity == 0, "the vault starts this test completely full");
+
+        var imp = AddImp(world, "SpillImp", world.Grid.BaseCell);
+
+        var target = FindNearestGold(world.Grid);
+        foreach (var cell in BuildCorridor(world.Grid.BaseCell, target))
+            world.Grid.MarkForDigging(cell.x, cell.y);
+
+        float dropped = RunUntil(imp, () => world.Spillage.Total > 0, 300f);
+        Check(dropped > 0f, $"an imp with nowhere to bank drops its load on the floor ({dropped:0.0}s)");
+
+        int onFloor = world.Spillage.Total;
+        Check(onFloor == GridManager.GoldPerSeam, $"the whole seam is on the floor ({onFloor})");
+        Check(world.Spillage.PileCount == 1, "it is one pile, not a trail of crumbs");
+        Check(world.Economy.LooseGold == onFloor, "the economy reports gold lying on the floor");
+        Check(world.Economy.TotalSpilled == onFloor, "dropping it is still recorded as a spill");
+
+        // An imp will not pick a pile up with nowhere to put it, or it would only drop it again.
+        Step(imp, 5f);
+        Check(world.Spillage.Total == onFloor, "nobody fetches gold while the vault is still full");
+
+        // Spend some of the vault, and the floor gets tidied up.
+        Check(world.Rooms.TryWithdraw(200), "spending gold makes room in the vault");
+        int banked = world.Economy.Gold;
+
+        float fetched = RunUntil(imp, () => world.Economy.Gold >= banked + onFloor, 300f);
+        Check(fetched > 0f, $"an imp went back for the gold on the floor and banked it ({fetched:0.0}s)");
+        Check(world.Spillage.Total == 0, "the floor is clear again");
+        Check(world.Spillage.PileCount == 0, "and the pile is gone with it");
+        Check(world.Economy.TotalSpilled == onFloor,
+            "the lifetime spill tally does not un-count itself when the gold comes back");
+
+        // --- claims keep the crew off each other's piles ----------------------
+        var first = new object();
+        var second = new object();
+        var cellA = world.Grid.BaseCell;
+
+        world.Spillage.Drop(cellA, 10);
+        Check(world.Spillage.TryClaim(cellA, first), "a pile can be claimed");
+        Check(!world.Spillage.TryClaim(cellA, second), "a claimed pile is off limits to everyone else");
+        Check(world.Spillage.TryClaim(cellA, first), "the owner can re-claim its own pile");
+
+        world.Spillage.Release(cellA, first);
+        Check(world.Spillage.TryClaim(cellA, second), "releasing a claim hands the pile over");
+        Check(world.Spillage.Take(cellA) == 10, "picking a pile up returns exactly what was there");
+        Check(!world.Spillage.TryClaim(cellA, first), "an empty tile cannot be claimed");
     }
 
     // ------------------------------------------------------------ solid ground
@@ -468,8 +542,11 @@ public static class TestHarness
         var rooms = new GameObject("SolidRooms").AddComponent<RoomManager>();
         rooms.Configure(grid);
 
+        var loose = new GameObject("SolidLoose").AddComponent<LooseGold>();
+        loose.Configure(grid);
+
         var economy = new GameObject("SolidEconomy").AddComponent<ResourceManager>();
-        economy.Configure(rooms);
+        economy.Configure(rooms, loose);
 
         var imps = new List<ImpAI>();
         for (int i = 0; i < 4; i++)
@@ -478,7 +555,7 @@ public static class TestHarness
             var imp = impObject.AddComponent<ImpAI>();
             imp.MoveSpeed = 3f;
             imp.DigDuration = 0.4f;
-            imp.Configure(grid, economy, rooms, new GameObject("Body").transform,
+            imp.Configure(grid, economy, rooms, loose, new GameObject("Body").transform,
                           new GameObject("Nugget").transform, grid.BaseCell);
             imps.Add(imp);
         }

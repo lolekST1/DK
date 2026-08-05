@@ -14,12 +14,20 @@ namespace DK
         public static ResourceManager Instance { get; private set; }
 
         RoomManager _rooms;
+        LooseGold _loose;
 
         /// <summary>Everything ever banked, including gold later spent. Never goes down.</summary>
         public int TotalBanked { get; private set; }
 
-        /// <summary>Mined gold that could not be banked because storage was full.</summary>
+        /// <summary>
+        /// Mined gold that has been dropped on the floor at some point, over the whole run.
+        /// Never goes down, even after an imp fetches the pile back — it is a record of how
+        /// often the vault ran out, not of what is lying around.
+        /// </summary>
         public int TotalSpilled { get; private set; }
+
+        /// <summary>Gold on the dungeon floor right now, waiting to be carried in.</summary>
+        public int LooseGold => _loose != null ? _loose.Total : 0;
 
         public int Gold => _rooms != null ? _rooms.StoredGold : 0;
 
@@ -44,9 +52,10 @@ namespace DK
             if (_rooms != null) _rooms.StorageChanged -= OnStorageChanged;
         }
 
-        public void Configure(RoomManager rooms)
+        public void Configure(RoomManager rooms, LooseGold loose = null)
         {
             _rooms = rooms;
+            _loose = loose;
             _rooms.StorageChanged += OnStorageChanged;
             OnStorageChanged(_rooms.StoredGold, _rooms.StorageCapacity);
         }

@@ -101,6 +101,9 @@ Landed since:
   spills. `ResourceManager` is now a facade over the vaults rather than an int of its own,
   so `AddGold(int)` from the brief no longer exists — use `Bank(cell, amount)`.
 - **Lairs.** Imps claim a lair tile unprompted and dig 30% faster once they have one.
+- **Spilled gold is recoverable.** `LooseGold` owns piles dropped on the floor when the vault
+  was full, with per-pile claims; `ImpAI` gained a `FetchGold` state that takes priority over
+  digging whenever there is vault space to fill.
 - **The portal and its creatures.** A `Portal` room the map places in a sealed cavern, plus
   `CreatureManager` (arrivals, payday, departures) and `CreatureAI` (sleep and wage needs).
   Arrivals are gated on a dug route to the portal and a free lair; unpaid creatures redden

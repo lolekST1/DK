@@ -31,6 +31,7 @@ namespace DK
 
         public GridManager Grid { get; private set; }
         public RoomManager Rooms { get; private set; }
+        public LooseGold Spillage { get; private set; }
         public ResourceManager Economy { get; private set; }
         public IReadOnlyList<ImpAI> Imps { get; private set; }
         public CreatureManager Creatures { get; private set; }
@@ -42,6 +43,7 @@ namespace DK
             // Terrain, then the rooms sitting on it, then the economy that reads those rooms.
             Grid = CreateGrid();
             Rooms = CreateRooms();
+            Spillage = CreateLooseGold();
             Economy = CreateResourceManager();
             Creatures = CreateCreatureManager();
 
@@ -61,8 +63,18 @@ namespace DK
             go.transform.SetParent(transform, false);
 
             var economy = go.AddComponent<ResourceManager>();
-            economy.Configure(Rooms);
+            economy.Configure(Rooms, Spillage);
             return economy;
+        }
+
+        LooseGold CreateLooseGold()
+        {
+            var go = new GameObject("LooseGold");
+            go.transform.SetParent(transform, false);
+
+            var loose = go.AddComponent<LooseGold>();
+            loose.Configure(Grid);
+            return loose;
         }
 
         RoomManager CreateRooms()
@@ -232,7 +244,7 @@ namespace DK
             var imp = root.AddComponent<ImpAI>();
             imp.MoveSpeed = ImpMoveSpeed;
             imp.DigDuration = ImpDigDuration;
-            imp.Configure(Grid, Economy, Rooms, body.transform, nugget.transform, homeCell);
+            imp.Configure(Grid, Economy, Rooms, Spillage, body.transform, nugget.transform, homeCell);
             return imp;
         }
 

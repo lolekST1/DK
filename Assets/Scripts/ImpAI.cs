@@ -9,6 +9,7 @@ namespace DK
         MoveToTarget,
         Digging,
         HaulGold,
+        FetchGold,
         ReturnToBase,
     }
 
@@ -61,6 +62,7 @@ namespace DK
         GridManager _grid;
         ResourceManager _resources;
         RoomManager _rooms;
+        LooseGold _loose;
         Transform _body;
         Transform _carryIcon;
 
@@ -68,12 +70,15 @@ namespace DK
         readonly List<Vector2Int> _candidatePath = new List<Vector2Int>();
         readonly List<Vector2Int> _queuedScratch = new List<Vector2Int>();
         readonly List<Vector2Int> _depositScratch = new List<Vector2Int>();
+        readonly List<Vector2Int> _looseScratch = new List<Vector2Int>();
 
         int _pathIndex;
         Vector2Int _digTarget;
         Vector2Int _haulTarget;
+        Vector2Int _fetchTarget;
         Vector2Int _fallbackHome;
         bool _haulHasTarget;
+        bool _hasFetchTarget;
         float _haulWaitTimer;
         float _digTimer;
         float _repathCooldown;
@@ -89,11 +94,13 @@ namespace DK
         };
 
         public void Configure(GridManager grid, ResourceManager resources, RoomManager rooms,
-                              Transform body, Transform carryIcon, Vector2Int fallbackHome)
+                              LooseGold loose, Transform body, Transform carryIcon,
+                              Vector2Int fallbackHome)
         {
             _grid = grid;
             _resources = resources;
             _rooms = rooms;
+            _loose = loose;
             _body = body;
             _carryIcon = carryIcon;
             if (_body != null) _bodyBaseY = _body.localPosition.y;
@@ -108,6 +115,7 @@ namespace DK
         void OnDestroy()
         {
             ReleaseTarget();
+            ReleaseFetchTarget();
             if (_rooms != null) _rooms.UnregisterWorker(this);
         }
 
@@ -137,6 +145,9 @@ namespace DK
                 case ImpState.HaulGold:
                     TickHaulGold(dt);
                     break;
+                case ImpState.FetchGold:
+                    TickFetchGold(dt);
+                    break;
                 case ImpState.ReturnToBase:
                     TickReturnToBase(dt);
                     break;
@@ -161,6 +172,14 @@ namespace DK
                 _haulHasTarget = false;
                 _repathCooldown = 0f;
                 State = ImpState.HaulGold;
+                return;
+            }
+
+            // Gold already mined and lying on the floor is worth more than gold still in the
+            // rock: it only needs carrying, and it is only there because the vault was full.
+            if (TrySelectLooseGold())
+            {
+                State = ImpState.FetchGold;
                 return;
             }
 
@@ -257,6 +276,10 @@ namespace DK
             _haulWaitTimer += dt;
             if (_haulWaitTimer >= patience)
             {
+                // Dropped, not destroyed: the gold stays on the floor and somebody comes back
+                // for it once there is room. The tally still counts it, because a pile the
+                // player never notices is the same problem as gold that vanished.
+                if (_loose != null) _loose.Drop(CurrentCell, CarriedGold);
                 if (_resources != null) _resources.ReportSpill(CarriedGold);
                 CarriedGold = 0;
                 UpdateCarryIcon();
@@ -282,6 +305,37 @@ namespace DK
             }
 
             SetPath(HomeCell);
+        }
+
+        void TickFetchGold(float dt)
+        {
+            // Another imp may have got there first, and the player may have dug the floor out
+            // from under a pile that no longer matters.
+            if (_loose == null || _loose.AmountAt(_fetchTarget) <= 0)
+            {
+                ReleaseFetchTarget();
+                State = ImpState.Idle;
+                return;
+            }
+
+            if (FollowPath(dt)) return;
+
+            int picked = _loose.Take(_fetchTarget);
+            ReleaseFetchTarget();
+
+            if (picked <= 0)
+            {
+                State = ImpState.Idle;
+                return;
+            }
+
+            CarriedGold += picked;
+            UpdateCarryIcon();
+
+            _haulHasTarget = false;
+            _haulWaitTimer = 0f;
+            _repathCooldown = 0f;
+            State = ImpState.HaulGold;
         }
 
         void TickReturnToBase(float dt)
@@ -338,6 +392,44 @@ namespace DK
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Nearest reachable pile of spilled gold, claimed so the crew spreads out over
+        /// several piles instead of all chasing the same one. Only worth doing when there is
+        /// somewhere to put it — otherwise the imp would pick the pile up and drop it again.
+        /// </summary>
+        bool TrySelectLooseGold()
+        {
+            if (_loose == null || _loose.Total <= 0) return false;
+            if (_rooms == null || _rooms.FreeCapacity <= 0) return false;
+
+            var from = CurrentCell;
+            _loose.CollectPiles(from, this, _looseScratch);
+
+            foreach (var cell in _looseScratch)
+            {
+                if (!_grid.IsWalkable(cell)) continue;
+                if (!Pathfinder.TryFindPath(_grid, from, cell, _candidatePath)) continue;
+                if (!_loose.TryClaim(cell, this)) continue;
+
+                _path.Clear();
+                _path.AddRange(_candidatePath);
+                _pathIndex = 0;
+                _fetchTarget = cell;
+                _hasFetchTarget = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        void ReleaseFetchTarget()
+        {
+            if (!_hasFetchTarget) return;
+
+            _hasFetchTarget = false;
+            if (_loose != null) _loose.Release(_fetchTarget, this);
         }
 
         /// <summary>Nearest storage tile with space that we can actually walk to.</summary>
