@@ -39,6 +39,14 @@ namespace DK
 
         public event Action<PlayerTool> ToolChanged;
 
+        /// <summary>
+        /// Set by the HUD: true while the pointer sits over a toolbar button. Without it a
+        /// click on "Treasury" would also paint the tile the button happens to cover.
+        /// </summary>
+        public Func<bool> PointerOverUi;
+
+        bool BlockedByUi => PointerOverUi != null && PointerOverUi();
+
         static readonly Color HoverDiggableColor = new Color(0.35f, 0.95f, 1f);
         static readonly Color HoverFloorColor = new Color(0.55f, 0.75f, 0.85f);
         static readonly Color HoverBuildableColor = new Color(0.40f, 0.95f, 0.45f);
@@ -81,6 +89,17 @@ namespace DK
             if (_grid == null || _camera == null) return;
 
             UpdateToolSelection();
+
+            // Over a toolbar button there is no world cursor and no painting: the click
+            // belongs to the button, not to the tile behind it.
+            if (BlockedByUi)
+            {
+                _hasHover = false;
+                HoverRefusal = null;
+                if (_cursor != null) _cursor.gameObject.SetActive(false);
+                return;
+            }
+
             UpdateHover();
             UpdateInput();
         }

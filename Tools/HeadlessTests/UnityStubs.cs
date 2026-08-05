@@ -95,13 +95,22 @@ namespace UnityEngine
 
     public struct Rect
     {
-        public Rect(float x, float y, float width, float height) { }
+        public float x, y, width, height;
+
+        public Rect(float x, float y, float width, float height)
+        {
+            this.x = x; this.y = y; this.width = width; this.height = height;
+        }
+
+        public bool Contains(Vector2 point) =>
+            point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height;
     }
 
     public static class GUI
     {
         public static Color color;
         public static void Label(Rect rect, string text) { }
+        public static bool Button(Rect rect, string text) => false;
     }
 
     public struct Ray
@@ -345,7 +354,7 @@ namespace UnityEngine.SceneManagement
 
 namespace UnityEngine.UI
 {
-    public class Graphic : Component { public Color color; }
+    public class Graphic : Component { public Color color; public bool raycastTarget = true; }
     public class Text : Graphic
     {
         public Font font;
@@ -354,6 +363,24 @@ namespace UnityEngine.UI
         public TextAnchor alignment;
     }
     public class Canvas : Component { public RenderMode renderMode; }
+
+    public class GraphicRaycaster : Component { }
+
+    public class Image : Graphic { }
+
+    public class Selectable : Component
+    {
+        public enum Transition { None, ColorTint, SpriteSwap, Animation }
+
+        public bool interactable = true;
+        public Transition transition;
+        public Graphic targetGraphic;
+    }
+
+    public class Button : Selectable
+    {
+        public readonly UnityEngine.Events.UnityEvent onClick = new UnityEngine.Events.UnityEvent();
+    }
     public class CanvasScaler : Component
     {
         public enum ScaleMode { ConstantPixelSize, ScaleWithScreenSize }
@@ -379,4 +406,30 @@ namespace TMPro
         public string text;
         public TextAlignmentOptions alignment;
     }
+}
+
+namespace UnityEngine.Events
+{
+    public delegate void UnityAction();
+
+    public class UnityEvent
+    {
+        readonly System.Collections.Generic.List<UnityAction> _listeners =
+            new System.Collections.Generic.List<UnityAction>();
+
+        public void AddListener(UnityAction call) { _listeners.Add(call); }
+        public void RemoveAllListeners() { _listeners.Clear(); }
+        public void Invoke() { for (int i = 0; i < _listeners.Count; i++) _listeners[i](); }
+    }
+}
+
+namespace UnityEngine.EventSystems
+{
+    public class EventSystem : UnityEngine.Component
+    {
+        public static EventSystem current;
+        public bool IsPointerOverGameObject() => false;
+    }
+
+    public class StandaloneInputModule : UnityEngine.Component { }
 }

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace DK
@@ -27,15 +28,53 @@ namespace DK
 
         HudMode _mode;
         readonly Line _gold = new Line();
-        readonly Line _toolbar = new Line();
         readonly Line _status = new Line();
+        readonly List<ToolButton> _toolButtons = new List<ToolButton>();
         CreatureManager _creatures;
 
         float _refreshTimer;
 
-        const string Hint = "LMB paint   RMB undo   1-4 pick tool   WASD / screen edge pan   Q/E rotate   Wheel zoom";
+        const string Hint = "Click a tool or press 1-4   LMB paint   RMB undo   WASD / screen edge pan   Q/E rotate   Wheel zoom";
 
         static readonly StringBuilder Builder = new StringBuilder(160);
+
+        static readonly Color ButtonIdle = new Color(0.13f, 0.13f, 0.17f, 0.92f);
+        static readonly Color ButtonActive = new Color(0.86f, 0.62f, 0.16f, 0.95f);
+        static readonly Color ButtonUnaffordable = new Color(0.13f, 0.13f, 0.17f, 0.55f);
+        static readonly Color ButtonLabel = new Color(0.94f, 0.94f, 0.96f);
+        static readonly Color ButtonLabelActive = new Color(0.10f, 0.08f, 0.04f);
+        static readonly Color ButtonLabelDim = new Color(0.62f, 0.60f, 0.58f);
+
+        const float ButtonWidth = 250f;
+        const float ButtonHeight = 52f;
+        const float ButtonGap = 10f;
+        const float ButtonTop = 92f;
+
+        /// <summary>The tool bar's contents. Costs are read from the catalog, never repeated here.</summary>
+        struct ToolSpec
+        {
+            public PlayerTool Tool;
+            public string Label;
+            public int Hotkey;
+            public RoomType Room;
+        }
+
+        static readonly ToolSpec[] Toolbar =
+        {
+            new ToolSpec { Tool = PlayerTool.Dig, Label = "Dig", Hotkey = 1, Room = RoomType.None },
+            new ToolSpec { Tool = PlayerTool.BuildTreasury, Label = "Treasury", Hotkey = 2, Room = RoomType.Treasury },
+            new ToolSpec { Tool = PlayerTool.BuildLair, Label = "Lair", Hotkey = 3, Room = RoomType.Lair },
+            new ToolSpec { Tool = PlayerTool.Sell, Label = "Sell", Hotkey = 4, Room = RoomType.None },
+        };
+
+        /// <summary>One clickable tool bar entry, plus the screen rect the IMGUI fallback draws.</summary>
+        class ToolButton
+        {
+            public ToolSpec Spec;
+            public Image Background;
+            public readonly Line Label = new Line();
+            public Rect ScreenRect;
+        }
 
         /// <summary>One HUD row, in whichever of the three text backends is available.</summary>
         class Line
@@ -68,7 +107,16 @@ namespace DK
             {
                 var canvas = BuildCanvas();
                 BuildLabels(canvas);
+                BuildToolbar(canvas);
             }
+            else
+            {
+                LayOutImGuiToolbar();
+            }
+
+            // The tools ask the HUD whether the pointer is busy, so a click on a button does
+            // not also paint the tile underneath it.
+            if (_tools != null) _tools.PointerOverUi = PointerOverUi;
 
             if (_resources != null) _resources.GoldChanged += OnGoldChanged;
 
@@ -80,6 +128,24 @@ namespace DK
         void OnDestroy()
         {
             if (_resources != null) _resources.GoldChanged -= OnGoldChanged;
+            if (_tools != null) _tools.PointerOverUi = null;
+        }
+
+        /// <summary>True while the mouse sits over a tool button, in whichever backend is live.</summary>
+        public bool PointerOverUi()
+        {
+            if (_mode == HudMode.ImGui)
+            {
+                // IMGUI measures from the top of the screen, Input from the bottom.
+                var point = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+
+                for (int i = 0; i < _toolButtons.Count; i++)
+                    if (_toolButtons[i].ScreenRect.Contains(point)) return true;
+
+                return false;
+            }
+
+            return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
         }
 
         void OnGoldChanged(int gold, int capacity) => RefreshGold();
@@ -123,23 +189,48 @@ namespace DK
         {
             if (_tools == null) return;
 
-            Builder.Length = 0;
-            AppendTool(PlayerTool.Dig, "Dig", 1, 0);
-            AppendTool(PlayerTool.BuildTreasury, "Treasury", 2, RoomCatalog.CostOf(RoomType.Treasury));
-            AppendTool(PlayerTool.BuildLair, "Lair", 3, RoomCatalog.CostOf(RoomType.Lair));
-            AppendTool(PlayerTool.Sell, "Sell", 4, 0);
+            for (int i = 0; i < _toolButtons.Count; i++)
+            {
+                var button = _toolButtons[i];
+                bool active = _tools.CurrentTool == button.Spec.Tool;
+                bool affordable = Affordable(button.Spec);
 
-            _toolbar.Set(Builder.ToString());
+                button.Label.Set(LabelFor(button.Spec));
+
+                if (button.Background == null) continue;
+
+                button.Background.color = active ? ButtonActive
+                                        : affordable ? ButtonIdle
+                                        : ButtonUnaffordable;
+
+                SetLabelColor(button.Label, active ? ButtonLabelActive
+                                          : affordable ? ButtonLabel
+                                          : ButtonLabelDim);
+            }
         }
 
-        void AppendTool(PlayerTool tool, string label, int hotkey, int cost)
+        /// <summary>A build tool you cannot pay for is dimmed rather than hidden.</summary>
+        bool Affordable(ToolSpec spec)
         {
-            bool active = _tools.CurrentTool == tool;
+            int cost = RoomCatalog.CostOf(spec.Room);
+            return cost <= 0 || (_resources != null && _resources.Gold >= cost);
+        }
 
-            Builder.Append(active ? "  > " : "   ");
-            Builder.Append(label).Append(' ').Append('[').Append(hotkey).Append(']');
-            if (cost > 0) Builder.Append(' ').Append(cost).Append('g');
-            if (active) Builder.Append(" <");
+        static string LabelFor(ToolSpec spec)
+        {
+            int cost = RoomCatalog.CostOf(spec.Room);
+
+            Builder.Length = 0;
+            Builder.Append(spec.Label).Append("  [").Append(spec.Hotkey).Append(']');
+            if (cost > 0) Builder.Append("  ").Append(cost).Append('g');
+
+            return Builder.ToString();
+        }
+
+        static void SetLabelColor(Line line, Color color)
+        {
+            if (line.Tmp != null) line.Tmp.color = color;
+            if (line.Legacy != null) line.Legacy.color = color;
         }
 
         void RefreshStatus()
@@ -209,12 +300,22 @@ namespace DK
 
             GUI.color = new Color(1f, 0.85f, 0.35f);
             GUI.Label(new Rect(18f, 14f, 600f, 30f), _gold.Value);
-            GUI.color = new Color(0.92f, 0.92f, 0.95f);
-            GUI.Label(new Rect(18f, 38f, 1200f, 30f), _toolbar.Value);
+
+            GUI.color = Color.white;
+            for (int i = 0; i < _toolButtons.Count; i++)
+            {
+                var button = _toolButtons[i];
+                bool active = _tools != null && _tools.CurrentTool == button.Spec.Tool;
+                string label = (active ? "> " : "") + LabelFor(button.Spec);
+
+                if (GUI.Button(button.ScreenRect, label) && _tools != null)
+                    _tools.SelectTool(button.Spec.Tool);
+            }
+
             GUI.color = new Color(1f, 0.62f, 0.25f);
-            GUI.Label(new Rect(18f, 62f, 1200f, 30f), _status.Value);
+            GUI.Label(new Rect(18f, 74f, 1200f, 30f), _status.Value);
             GUI.color = new Color(0.85f, 0.85f, 0.85f, 0.8f);
-            GUI.Label(new Rect(18f, 86f, 1200f, 30f), Hint);
+            GUI.Label(new Rect(18f, 98f, 1200f, 30f), Hint);
             GUI.color = Color.white;
         }
 
@@ -233,7 +334,8 @@ namespace DK
 
         RectTransform BuildCanvas()
         {
-            var canvasObject = new GameObject("HUD Canvas", typeof(Canvas), typeof(CanvasScaler));
+            var canvasObject = new GameObject("HUD Canvas", typeof(Canvas), typeof(CanvasScaler),
+                                              typeof(GraphicRaycaster));
             canvasObject.transform.SetParent(transform, false);
 
             var canvas = canvasObject.GetComponent<Canvas>();
@@ -244,18 +346,80 @@ namespace DK
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.matchWidthOrHeight = 0.5f;
 
+            EnsureEventSystem();
+
             return (RectTransform)canvasObject.transform;
+        }
+
+        /// <summary>
+        /// uGUI needs an EventSystem to route clicks, and a procedurally built scene has none.
+        /// Legacy input module to match the rest of the game, which reads the old Input class.
+        /// </summary>
+        void EnsureEventSystem()
+        {
+            if (EventSystem.current != null) return;
+
+            var go = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+            go.transform.SetParent(transform, false);
         }
 
         void BuildLabels(RectTransform canvas)
         {
             BuildLine(canvas, _gold, "Gold Label", -24f, 64f, 46f, 40, new Color(1f, 0.85f, 0.35f));
-            BuildLine(canvas, _toolbar, "Toolbar Label", -88f, 44f, 28f, 24, new Color(0.92f, 0.92f, 0.95f));
-            BuildLine(canvas, _status, "Status Label", -132f, 44f, 26f, 22, new Color(1f, 0.62f, 0.25f));
+            BuildLine(canvas, _status, "Status Label", -152f, 44f, 26f, 22, new Color(1f, 0.62f, 0.25f));
 
             var hint = new Line();
-            BuildLine(canvas, hint, "Hint Label", -176f, 44f, 24f, 20, new Color(0.85f, 0.85f, 0.85f, 0.8f));
+            BuildLine(canvas, hint, "Hint Label", -196f, 44f, 24f, 20, new Color(0.85f, 0.85f, 0.85f, 0.8f));
             hint.Set(Hint);
+        }
+
+        /// <summary>
+        /// The tool bar proper: one clickable button per tool. It used to be a line of text
+        /// that only told you which keys to press, which meant building was invisible to
+        /// anyone who had not read the README.
+        /// </summary>
+        void BuildToolbar(RectTransform canvas)
+        {
+            for (int i = 0; i < Toolbar.Length; i++)
+            {
+                var spec = Toolbar[i];
+                float x = 24f + i * (ButtonWidth + ButtonGap);
+
+                var rect = CreateRect(canvas, "Tool_" + spec.Label,
+                                      new Vector2(x, -ButtonTop), new Vector2(ButtonWidth, ButtonHeight));
+
+                var background = rect.gameObject.AddComponent<Image>();
+                background.color = ButtonIdle;
+
+                var button = rect.gameObject.AddComponent<Button>();
+                button.targetGraphic = background;
+                // We colour the button ourselves from tool state and affordability, so Unity's
+                // own tinting would only fight us for it.
+                button.transition = Selectable.Transition.None;
+
+                var tool = spec.Tool;
+                button.onClick.AddListener(() => { if (_tools != null) _tools.SelectTool(tool); });
+
+                var labelRect = CreateRect(rect, "Label", new Vector2(16f, -12f),
+                                           new Vector2(ButtonWidth - 32f, ButtonHeight - 16f));
+
+                var entry = new ToolButton { Spec = spec, Background = background };
+                if (_mode == HudMode.TextMeshPro) entry.Label.Tmp = AddTmpText(labelRect, 26f, ButtonLabel);
+                else entry.Label.Legacy = AddLegacyText(labelRect, 22, ButtonLabel);
+
+                _toolButtons.Add(entry);
+            }
+        }
+
+        /// <summary>Screen rects for the IMGUI fallback, which draws its own buttons.</summary>
+        void LayOutImGuiToolbar()
+        {
+            for (int i = 0; i < Toolbar.Length; i++)
+                _toolButtons.Add(new ToolButton
+                {
+                    Spec = Toolbar[i],
+                    ScreenRect = new Rect(18f + i * 178f, 40f, 170f, 28f),
+                });
         }
 
         void BuildLine(RectTransform canvas, Line line, string name, float y, float height,
@@ -287,6 +451,8 @@ namespace DK
             text.fontSize = fontSize;
             text.color = color;
             text.alignment = TextAlignmentOptions.TopLeft;
+            // Otherwise the full-width HUD lines swallow every click aimed at the map.
+            text.raycastTarget = false;
             return text;
         }
 
@@ -297,6 +463,7 @@ namespace DK
             text.fontSize = fontSize;
             text.color = color;
             text.alignment = TextAnchor.UpperLeft;
+            text.raycastTarget = false;
             return text;
         }
 

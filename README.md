@@ -19,8 +19,12 @@ are all created and wired at runtime in `GameBootstrap.Awake()`.
 
 ### Controls
 
+Every tool has a button in the top-left tool bar — click it, or use the key. Build buttons dim
+when the vault cannot cover the next tile.
+
 | Input | Action |
 | --- | --- |
+| Click a tool button | Select that tool |
 | `1` / `Esc` | Dig tool (default) |
 | `2` | Build treasury — 50 gold a tile, holds 250 |
 | `3` | Build lair — 100 gold a tile, one imp each |
@@ -144,6 +148,14 @@ a bug rather than as a consequence.
 **No NavMesh.** Tiles appear and vanish at runtime, which NavMesh handles poorly. A
 hand-rolled A* over the array we already own is simpler, faster and predictable. It reuses
 its scratch buffers, so pathfinding does not allocate per search.
+
+**The tool bar is buttons, not a legend.** It used to be a line of text naming the hotkeys,
+which meant that building — the half of the game the dig loop pays for — was invisible to
+anyone who had not read this file. The buttons carry their own cost and dim when you cannot
+afford them, so the economy is legible without a manual. `PlayerTools` asks the HUD whether the
+pointer is over one before it picks or paints, so a click on a button never also paints the
+tile behind it, and every HUD text line is `raycastTarget = false` so the full-width labels do
+not swallow clicks aimed at the map.
 
 **No colliders.** Mouse picking is two maths-plane raycasts — one at the top of the blocks,
 one at floor level — so there is not a single collider in the scene.
