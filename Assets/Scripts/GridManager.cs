@@ -29,6 +29,10 @@ namespace DK
         Renderer[,,] _renderers;
 
         readonly HashSet<Vector2Int> _queued = new HashSet<Vector2Int>();
+
+        // Which digger has taken responsibility for which queued tile. Without this, every
+        // idle imp picks the same nearest tile and they all walk to it together.
+        readonly Dictionary<Vector2Int, object> _claims = new Dictionary<Vector2Int, object>();
         MaterialPropertyBlock _propertyBlock;
 
         Material _blockMaterial;
@@ -148,6 +152,10 @@ namespace DK
 
         public bool IsMarkedForDigging(int x, int z) => InBounds(x, z) && _marked[x, 0, z];
 
+        /// <summary>True when some other digger has already taken this tile.</summary>
+        public bool IsClaimedByOther(Vector2Int cell, object digger) =>
+            _claims.TryGetValue(cell, out var holder) && !ReferenceEquals(holder, digger);
+
         public Vector3 CellToWorld(int x, int z) =>
             new Vector3((x + 0.5f) * TileSize, 0f, (z + 0.5f) * TileSize);
 
@@ -179,9 +187,31 @@ namespace DK
 
             _marked[x, 0, z] = false;
             _queued.Remove(new Vector2Int(x, z));
+            _claims.Remove(new Vector2Int(x, z));
             ApplyTint(x, z);
             TileChanged?.Invoke(x, z);
             return true;
+        }
+
+        /// <summary>
+        /// Takes responsibility for digging a queued tile. Returns false when another digger
+        /// holds it, or when it is no longer queued.
+        /// </summary>
+        public bool TryClaimTile(Vector2Int cell, object digger)
+        {
+            if (!IsDiggable(cell.x, cell.y) || !IsMarkedForDigging(cell.x, cell.y)) return false;
+
+            if (_claims.TryGetValue(cell, out var holder)) return ReferenceEquals(holder, digger);
+
+            _claims[cell] = digger;
+            return true;
+        }
+
+        /// <summary>Gives a claimed tile back. Claims held by others are left alone.</summary>
+        public void ReleaseTile(Vector2Int cell, object digger)
+        {
+            if (_claims.TryGetValue(cell, out var holder) && ReferenceEquals(holder, digger))
+                _claims.Remove(cell);
         }
 
         /// <summary>Digs a tile out. Returns the gold awarded (0 for plain rock).</summary>
@@ -194,6 +224,7 @@ namespace DK
             _states[x, 0, z] = TileState.Dug;
             _marked[x, 0, z] = false;
             _queued.Remove(new Vector2Int(x, z));
+            _claims.Remove(new Vector2Int(x, z));
             if (_blocks[x, 0, z] != null) _blocks[x, 0, z].SetActive(false);
 
             TileChanged?.Invoke(x, z);

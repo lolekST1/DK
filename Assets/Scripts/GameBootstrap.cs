@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace DK
@@ -17,13 +18,14 @@ namespace DK
         [Range(0f, 0.5f)] public float GoldChance = 0.10f;
         public int StartingChamberRadius = 2;
 
-        [Header("Imp")]
+        [Header("Imps")]
+        public int ImpCount = 4;
         public float ImpMoveSpeed = 3.0f;
         public float ImpDigDuration = 1.2f;
 
         public GridManager Grid { get; private set; }
         public ResourceManager Economy { get; private set; }
-        public ImpAI Imp { get; private set; }
+        public IReadOnlyList<ImpAI> Imps { get; private set; }
         public CameraRig Rig { get; private set; }
 
         void Awake()
@@ -36,7 +38,7 @@ namespace DK
             var camera = CreateCamera();
             Rig = CreateCameraRig(camera, sun);
 
-            Imp = CreateImp();
+            Imps = CreateImps();
             CreateTileDigger(camera);
             CreateHud();
         }
@@ -103,9 +105,47 @@ namespace DK
             return go.transform;
         }
 
-        ImpAI CreateImp()
+        IReadOnlyList<ImpAI> CreateImps()
         {
-            var root = new GameObject("Imp");
+            var homes = PickHomeCells(Mathf.Max(1, ImpCount));
+            var imps = new List<ImpAI>(homes.Count);
+
+            for (int i = 0; i < homes.Count; i++)
+                imps.Add(CreateImp(i, homes.Count, homes[i]));
+
+            return imps;
+        }
+
+        /// <summary>
+        /// Distinct walkable tiles nearest the base, so idle imps stand side by side instead
+        /// of piling onto one spot.
+        /// </summary>
+        List<Vector2Int> PickHomeCells(int count)
+        {
+            var candidates = new List<Vector2Int>();
+            var baseCell = Grid.BaseCell;
+
+            for (int x = 0; x < Grid.Width; x++)
+            for (int z = 0; z < Grid.Depth; z++)
+            {
+                if (!Grid.IsWalkable(x, z)) continue;
+                candidates.Add(new Vector2Int(x, z));
+            }
+
+            candidates.Sort((a, b) =>
+                (Mathf.Abs(a.x - baseCell.x) + Mathf.Abs(a.y - baseCell.y))
+                .CompareTo(Mathf.Abs(b.x - baseCell.x) + Mathf.Abs(b.y - baseCell.y)));
+
+            var homes = new List<Vector2Int>(count);
+            for (int i = 0; i < count; i++)
+                homes.Add(candidates.Count > 0 ? candidates[i % candidates.Count] : baseCell);
+
+            return homes;
+        }
+
+        ImpAI CreateImp(int index, int total, Vector2Int homeCell)
+        {
+            var root = new GameObject($"Imp_{index}");
             root.transform.SetParent(transform, false);
 
             var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
@@ -114,8 +154,11 @@ namespace DK
             body.transform.SetParent(root.transform, false);
             body.transform.localScale = new Vector3(0.45f, 0.32f, 0.45f);
             body.transform.localPosition = new Vector3(0f, 0.32f, 0f);
+            // A little colour spread so individual imps stay tellable apart in a crowd.
+            float t = total > 1 ? index / (float)(total - 1) : 0f;
+            var skin = new Color(0.70f + 0.14f * t, 0.24f + 0.20f * t, 0.36f - 0.10f * t);
             body.GetComponent<Renderer>().sharedMaterial =
-                MaterialLibrary.CreateLit("DK_Imp", new Color(0.75f, 0.28f, 0.32f));
+                MaterialLibrary.CreateLit($"DK_Imp_{index}", skin);
 
             // A snout so you can tell which way the imp is facing.
             var snout = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -130,7 +173,7 @@ namespace DK
             var imp = root.AddComponent<ImpAI>();
             imp.MoveSpeed = ImpMoveSpeed;
             imp.DigDuration = ImpDigDuration;
-            imp.Configure(Grid, Economy, body.transform);
+            imp.Configure(Grid, Economy, body.transform, homeCell);
             return imp;
         }
 

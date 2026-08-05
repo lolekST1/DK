@@ -12,8 +12,9 @@ namespace DK
     }
 
     /// <summary>
-    /// The single worker creature: picks the nearest reachable queued tile, walks to a tile
-    /// adjacent to it, digs for a fixed time, then looks for more work or heads back to base.
+    /// A worker creature: picks the nearest reachable queued tile, walks to a tile adjacent
+    /// to it, digs for a fixed time, then looks for more work or heads back to its home tile.
+    /// Several imps share one grid, so each claims its target and never poaches another's.
     /// </summary>
     public class ImpAI : MonoBehaviour
     {
@@ -22,6 +23,12 @@ namespace DK
         public float DigDuration = 1.2f;
 
         public ImpState State { get; private set; } = ImpState.Idle;
+
+        /// <summary>Tile this imp idles on, so a crowd of imps does not stack up on one spot.</summary>
+        public Vector2Int HomeCell { get; private set; }
+
+        public bool HasDigTarget { get; private set; }
+        public Vector2Int DigTarget => _digTarget;
 
         GridManager _grid;
         ResourceManager _resources;
@@ -46,15 +53,18 @@ namespace DK
             new Vector2Int(0, -1),
         };
 
-        public void Configure(GridManager grid, ResourceManager resources, Transform body)
+        public void Configure(GridManager grid, ResourceManager resources, Transform body, Vector2Int homeCell)
         {
             _grid = grid;
             _resources = resources;
             _body = body;
             if (_body != null) _bodyBaseY = _body.localPosition.y;
 
-            transform.position = grid.CellToWorld(grid.BaseCell);
+            HomeCell = grid.IsWalkable(homeCell) ? homeCell : grid.BaseCell;
+            transform.position = grid.CellToWorld(HomeCell);
         }
+
+        void OnDestroy() => ReleaseTarget();
 
         public Vector2Int CurrentCell => _grid.WorldToCell(transform.position);
 
@@ -97,9 +107,9 @@ namespace DK
                 return;
             }
 
-            // Nothing queued: idle at base, walking back if we wandered off.
-            if (CurrentCell != _grid.BaseCell &&
-                Pathfinder.TryFindPath(_grid, CurrentCell, _grid.BaseCell, _path))
+            // Nothing left to claim: idle at home, walking back if we wandered off.
+            if (CurrentCell != HomeCell &&
+                Pathfinder.TryFindPath(_grid, CurrentCell, HomeCell, _path))
             {
                 _pathIndex = 0;
                 State = ImpState.ReturnToBase;
@@ -111,6 +121,7 @@ namespace DK
             // The player can cancel a mark, or the tile can vanish, while we are en route.
             if (!_grid.IsMarkedForDigging(_digTarget.x, _digTarget.y))
             {
+                ReleaseTarget();
                 State = ImpState.Idle;
                 return;
             }
@@ -126,6 +137,7 @@ namespace DK
             if (!_grid.IsDiggable(_digTarget.x, _digTarget.y) ||
                 !_grid.IsMarkedForDigging(_digTarget.x, _digTarget.y))
             {
+                ReleaseTarget();
                 State = ImpState.Idle;
                 return;
             }
@@ -138,6 +150,7 @@ namespace DK
             int gold = _grid.DigOut(_digTarget.x, _digTarget.y);
             if (gold > 0 && _resources != null) _resources.AddGold(gold);
 
+            ReleaseTarget();
             _repathCooldown = 0f;
             State = ImpState.Idle;
         }
@@ -176,6 +189,7 @@ namespace DK
             foreach (var target in _queuedScratch)
             {
                 if (!_grid.IsDiggable(target.x, target.y)) continue;
+                if (_grid.IsClaimedByOther(target, this)) continue;
 
                 for (int i = 0; i < Neighbours.Length; i++)
                 {
@@ -183,15 +197,26 @@ namespace DK
                     if (!_grid.IsWalkable(stand)) continue;
                     if (!Pathfinder.TryFindPath(_grid, from, stand, _candidatePath)) continue;
 
+                    if (!_grid.TryClaimTile(target, this)) break;
+
                     _path.Clear();
                     _path.AddRange(_candidatePath);
                     _pathIndex = 0;
                     _digTarget = target;
+                    HasDigTarget = true;
                     return true;
                 }
             }
 
             return false;
+        }
+
+        void ReleaseTarget()
+        {
+            if (!HasDigTarget) return;
+
+            HasDigTarget = false;
+            if (_grid != null) _grid.ReleaseTile(_digTarget, this);
         }
 
         /// <summary>Advances along the current path. Returns true while still moving.</summary>

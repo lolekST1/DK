@@ -1,7 +1,7 @@
 # Dungeon Keeper–style Prototype
 
-A vertical slice of the core Dungeon Keeper loop: mark rock for digging, an imp paths
-to it, digs it out, gold seams pay out. No combat, no rooms, one creature.
+A vertical slice of the core Dungeon Keeper loop: mark rock for digging, imps path to
+it, dig it out, gold seams pay out. No combat, no rooms yet.
 
 ## Running it
 
@@ -46,9 +46,9 @@ The build is uncompressed on purpose, so it serves from any static host without
 ```
 Assets/Scripts/
   GameBootstrap.cs    Creates and wires the whole scene at runtime
-  GridManager.cs      Tile states, dig queue, block visuals
+  GridManager.cs      Tile states, dig queue, per-tile claims, block visuals
   Pathfinder.cs       4-directional A* over the tile array
-  ImpAI.cs            Idle → MoveToTarget → Digging → ReturnToBase
+  ImpAI.cs            Idle → MoveToTarget → Digging → ReturnToBase, one per imp
   TileDigger.cs       Mouse picking, hover cursor, mark/unmark
   CameraRig.cs        45° rig: pan, zoom, 90° rotation, clamped to the grid
   ResourceManager.cs  Gold counter
@@ -67,6 +67,11 @@ Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 **Everything procedural.** No prefabs, no Inspector references. `GameBootstrap` has a few
 tunable public fields (grid size, seed, gold density, imp speed) with working defaults; the
 scene runs untouched from a fresh clone.
+
+**A crew, not a worker.** `GameBootstrap.ImpCount` imps share one dig queue. Each claims a
+tile in `GridManager` before walking to it and releases the claim when it finishes or the
+player cancels the mark, so imps split the work instead of all converging on whichever tile
+happens to be nearest. Each also gets its own home tile, so idle imps stand side by side.
 
 **No NavMesh.** Tiles appear and vanish at runtime, which NavMesh handles poorly. A
 hand-rolled A* over the array we already own is simpler, faster and predictable. It reuses
@@ -96,12 +101,13 @@ sudo apt-get install -y mono-mcs   # once
 It type-checks every script against stub Unity types, then runs the real `GridManager`,
 `Pathfinder` and `ImpAI` through a full dig cycle — generation determinism, marking rules,
 A* shortest paths and failure cases, corridor digging, the gold payout, the walk back to
-base, and an unreachable mark not wedging the state machine.
+base, and an unreachable mark not wedging the state machine. A multi-imp pass then checks
+that claims are never shared, that every queued tile still gets dug, and that three imps
+actually finish a queue faster than one.
 
 This covers logic only. Rendering, input, and the WebGL build still need the Editor.
 
 ## Out of scope for this prototype
 
-Multiple imps, rooms, walls, a dungeon heart, combat, hero incursions, save/load, and
-verticality. The grid is stored as a 3D array with a single Y layer, so adding layers later
+Rooms, walls, a dungeon heart, combat, hero incursions, save/load, and verticality. The grid is stored as a 3D array with a single Y layer, so adding layers later
 does not mean rewriting the data model.

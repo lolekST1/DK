@@ -71,7 +71,6 @@ working independently. Set up at project init:
    - Just an int gold counter + a basic on-screen UI text (Canvas + TextMeshPro)
 
 ## Explicitly out of scope (do not build yet)
-- Multiple imps / creature spawning
 - Room building, walls, dungeon heart
 - Combat, enemies, hero incursions
 - Save/load
@@ -84,6 +83,11 @@ working independently. Set up at project init:
 - No manual Inspector wiring required to run the scene from a fresh clone
   (aside from opening the one bootstrap scene).
 - Produces a working WebGL build in `Builds/WebGL/`.
+
+## Beyond the prototype
+The vertical slice above is built, verified in-Editor and as a WebGL build, and merged.
+Work landed since: camera rotation (Q/E) with the sun following the rig, and multiple
+imps sharing one dig queue via per-tile claims in `GridManager`.
 
 ## Workflow
 Follow the usual approach: work independently, self-fix compile/runtime

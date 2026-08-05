@@ -24,7 +24,7 @@ public static class TestHarness
         var imp = impObject.AddComponent<ImpAI>();
         imp.MoveSpeed = 3f;
         imp.DigDuration = 1.2f;
-        imp.Configure(grid, economy, body);
+        imp.Configure(grid, economy, body, grid.BaseCell);
 
         // --- generation -----------------------------------------------------
         Check(grid.BaseCell.x == 10 && grid.BaseCell.y == 10, "base cell is the grid centre");
@@ -100,10 +100,111 @@ public static class TestHarness
         Check(grid.QueuedCount == 1 && imp.State == ImpState.Idle,
             "an unreachable mark leaves the imp idle instead of stuck");
 
+        // --- several imps share the queue ------------------------------------
+        MultiImpChecks();
+
         Console.WriteLine(_failures == 0
             ? "\nAll checks passed."
             : $"\n{_failures} check(s) FAILED.");
         return _failures == 0 ? 0 : 1;
+    }
+
+    // ------------------------------------------------------------------ multi-imp
+
+    static void MultiImpChecks()
+    {
+        var single = BuildCrew(1);
+        var crew = BuildCrew(3);
+
+        Check(crew.Imps[0].HomeCell != crew.Imps[1].HomeCell &&
+              crew.Imps[1].HomeCell != crew.Imps[2].HomeCell &&
+              crew.Imps[0].HomeCell != crew.Imps[2].HomeCell,
+            "each imp gets its own home tile");
+
+        int expectedGold = 0;
+        foreach (var cell in crew.Marked)
+            if (crew.Grid.GetTileState(cell.x, cell.y) == TileState.GoldSeam) expectedGold++;
+        expectedGold *= GridManager.GoldPerSeam;
+
+        float crewTime = RunCrewUntilIdle(crew, out bool everShared);
+        float singleTime = RunCrewUntilIdle(single, out _);
+
+        Check(!everShared, "no two imps ever hold a claim on the same tile");
+        Check(crewTime > 0f, $"three imps cleared {crew.Marked.Count} tiles in {crewTime:0.0}s");
+        Check(singleTime > 0f, $"one imp cleared the same work in {singleTime:0.0}s");
+        Check(crewTime < singleTime, "three imps beat one imp on the same queue");
+
+        foreach (var cell in crew.Marked)
+            Check(crew.Grid.GetTileState(cell.x, cell.y) == TileState.Dug,
+                $"crew dug out tile {cell.x},{cell.y}");
+
+        Check(crew.Economy.Gold == expectedGold,
+            $"crew gold is {crew.Economy.Gold}, expected {expectedGold}");
+    }
+
+    class Crew
+    {
+        public GridManager Grid;
+        public ResourceManager Economy;
+        public List<ImpAI> Imps = new List<ImpAI>();
+        public List<Vector2Int> Marked = new List<Vector2Int>();
+    }
+
+    /// <summary>Identical world every time: same seed, same marks, only the head count differs.</summary>
+    static Crew BuildCrew(int impCount)
+    {
+        var crew = new Crew();
+        crew.Grid = new GameObject("CrewGrid").AddComponent<GridManager>();
+        crew.Grid.Configure(20, 20, 4242, 0.10f, 2);
+        crew.Economy = new GameObject("CrewEconomy").AddComponent<ResourceManager>();
+
+        // Two clusters on opposite sides of the chamber, every tile touching a walkable one.
+        foreach (int x in new[] { 7, 13 })
+        for (int z = 8; z <= 12; z++)
+        {
+            if (!crew.Grid.MarkForDigging(x, z)) continue;
+            crew.Marked.Add(new Vector2Int(x, z));
+        }
+
+        var homes = new[]
+        {
+            crew.Grid.BaseCell,
+            new Vector2Int(crew.Grid.BaseCell.x - 1, crew.Grid.BaseCell.y),
+            new Vector2Int(crew.Grid.BaseCell.x + 1, crew.Grid.BaseCell.y),
+        };
+
+        for (int i = 0; i < impCount; i++)
+        {
+            var imp = new GameObject($"CrewImp{i}").AddComponent<ImpAI>();
+            imp.MoveSpeed = 3f;
+            imp.DigDuration = 1.2f;
+            imp.Configure(crew.Grid, crew.Economy, new GameObject($"CrewBody{i}").transform, homes[i % homes.Length]);
+            crew.Imps.Add(imp);
+        }
+
+        return crew;
+    }
+
+    static float RunCrewUntilIdle(Crew crew, out bool everShared)
+    {
+        everShared = false;
+        int steps = (int)(600f / Time.deltaTime);
+
+        for (int i = 0; i < steps; i++)
+        {
+            foreach (var imp in crew.Imps) ImpUpdate.Invoke(imp, null);
+
+            for (int a = 0; a < crew.Imps.Count; a++)
+            for (int b = a + 1; b < crew.Imps.Count; b++)
+            {
+                if (!crew.Imps[a].HasDigTarget || !crew.Imps[b].HasDigTarget) continue;
+                if (crew.Imps[a].DigTarget == crew.Imps[b].DigTarget) everShared = true;
+            }
+
+            if (crew.Grid.QueuedCount == 0) return (i + 1) * Time.deltaTime;
+        }
+
+        return -1f;
     }
 
     // ------------------------------------------------------------------ helpers
