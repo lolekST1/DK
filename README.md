@@ -87,6 +87,7 @@ Assets/Scripts/
   CreatureAI.cs       Idle → GoingToLair → Sleeping / Wandering / Leaving
   CreatureCatalog.cs  Wage, fatigue and patience per creature — the whole creature balance
   Pathfinder.cs       4-directional A* over the tile array
+  GridWalker.cs       Path following and turning, shared by everything that walks
   ImpAI.cs            Idle → MoveToTarget → Digging → HaulGold → ReturnToBase, one per imp
   PlayerTools.cs      Mouse picking, hover cursor, dig / build / sell tools
   CameraRig.cs        45° rig: pan, zoom, 90° rotation, clamped to the grid

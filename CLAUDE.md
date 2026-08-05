@@ -115,9 +115,9 @@ Landed since:
 Deliberately still simplified: dug floor is owned immediately, with no per-tile claiming
 step for the imps — see the design notes in `README.md`.
 
-Deliberately still simplified: `CreatureAI` carries its own copy of the path-following and
-bobbing code that `ImpAI` has. Unifying them behind one walker is worth doing, but not in the
-same change that introduced the creature layer.
+`GridWalker` owns path following and turning for everything that walks the grid.
+`CreatureAI` uses it; `ImpAI` deliberately does not, because its route selection commits a
+tile claim in the same step and is easier to read as one piece.
 
 Natural next parts, roughly in dependency order: more creature kinds hanging off
 `CreatureCatalog` (the enum and switch are already shaped for it); then combat and hero

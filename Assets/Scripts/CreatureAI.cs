@@ -43,16 +43,16 @@ namespace DK
         public float TurnSpeed = 12f;
 
         GridManager _grid;
+        GridWalker _walker;
         RoomManager _rooms;
         Renderer _bodyRenderer;
         Transform _body;
         MaterialPropertyBlock _propertyBlock;
 
-        readonly List<Vector2Int> _path = new List<Vector2Int>();
+        readonly List<Vector2Int> _scratch = new List<Vector2Int>();
 
         CreatureCatalog.Entry _stats;
         Vector2Int _fallbackHome;
-        int _pathIndex;
         float _decisionCooldown;
         float _bobPhase;
         float _bodyBaseY;
@@ -76,6 +76,12 @@ namespace DK
 
             _fallbackHome = grid.IsWalkable(spawnCell) ? spawnCell : grid.BaseCell;
             if (_rooms != null) _rooms.RegisterWorker(this, _fallbackHome);
+
+            _walker = new GridWalker(grid, transform)
+            {
+                MoveSpeed = _stats.MoveSpeed,
+                TurnSpeed = TurnSpeed,
+            };
 
             _wanderSeed = GetHashCode();
             transform.position = grid.CellToWorld(_fallbackHome);
@@ -166,11 +172,9 @@ namespace DK
             if (State == CreatureState.Leaving) return;
 
             State = CreatureState.Leaving;
-            _pathIndex = 0;
-            _path.Clear();
+            _walker.Stop();
 
-            if (_rooms != null && _rooms.HasPortal)
-                Pathfinder.TryFindPath(_grid, CurrentCell, _rooms.PortalCell, _path);
+            if (_rooms != null && _rooms.HasPortal) _walker.SetPath(_rooms.PortalCell);
         }
 
         void TickIdle()
@@ -190,19 +194,14 @@ namespace DK
                     return;
                 }
 
-                if (Pathfinder.TryFindPath(_grid, CurrentCell, home, _path))
+                if (_walker.SetPath(home))
                 {
-                    _pathIndex = 0;
                     State = CreatureState.GoingToLair;
                     return;
                 }
             }
 
-            if (TryPickWanderTarget())
-            {
-                _pathIndex = 0;
-                State = CreatureState.Wandering;
-            }
+            if (TryPickWanderTarget()) State = CreatureState.Wandering;
         }
 
         void TickGoingToLair(float dt)
@@ -213,7 +212,7 @@ namespace DK
                 return;
             }
 
-            if (FollowPath(dt)) return;
+            if (_walker.Advance(dt)) return;
 
             State = CurrentCell == HomeCell ? CreatureState.Sleeping : CreatureState.Idle;
         }
@@ -237,7 +236,7 @@ namespace DK
                 return;
             }
 
-            if (FollowPath(dt)) return;
+            if (_walker.Advance(dt)) return;
 
             State = CreatureState.Idle;
             _decisionCooldown = 1.2f;
@@ -245,7 +244,7 @@ namespace DK
 
         void TickLeaving(float dt)
         {
-            if (FollowPath(dt)) return;
+            if (_walker.Advance(dt)) return;
 
             // Reached the portal, or could not path to it at all. Either way it is done here:
             // a creature stuck forever in a walled-off dungeon would just accumulate.
@@ -272,51 +271,12 @@ namespace DK
                 var candidate = new Vector2Int(from.x + offsetX, from.y + offsetZ);
                 if (candidate == from) continue;
                 if (!_grid.IsWalkable(candidate)) continue;
-                if (!Pathfinder.TryFindPath(_grid, from, candidate, _path)) continue;
+                if (!_walker.SetPath(candidate)) continue;
 
                 return true;
             }
 
             return false;
-        }
-
-        bool FollowPath(float dt)
-        {
-            while (_pathIndex < _path.Count)
-            {
-                var waypoint = _grid.CellToWorld(_path[_pathIndex]);
-                var position = transform.position;
-                var flatDelta = new Vector3(waypoint.x - position.x, 0f, waypoint.z - position.z);
-
-                if (flatDelta.sqrMagnitude <= 0.0025f)
-                {
-                    _pathIndex++;
-                    continue;
-                }
-
-                float step = _stats.MoveSpeed * dt;
-                if (flatDelta.magnitude <= step)
-                {
-                    transform.position = new Vector3(waypoint.x, position.y, waypoint.z);
-                    _pathIndex++;
-                    continue;
-                }
-
-                transform.position = position + flatDelta.normalized * step;
-                FaceTowards(waypoint, dt);
-                return true;
-            }
-
-            return false;
-        }
-
-        void FaceTowards(Vector3 worldPoint, float dt)
-        {
-            var flat = new Vector3(worldPoint.x - transform.position.x, 0f, worldPoint.z - transform.position.z);
-            if (flat.sqrMagnitude < 0.0001f) return;
-
-            var wanted = Quaternion.LookRotation(flat, Vector3.up);
-            transform.rotation = Quaternion.Slerp(transform.rotation, wanted, 1f - Mathf.Exp(-TurnSpeed * dt));
         }
 
         void AnimateBody(float dt)
