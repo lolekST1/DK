@@ -252,6 +252,18 @@ framing scales with the grid too, and starts far enough out to hold all of it.
 **No colliders.** Mouse picking is two maths-plane raycasts — one at the top of the blocks,
 one at floor level — so there is not a single collider in the scene.
 
+**No cast shadows.** Every block top shares one normal, so they must all light identically —
+and in a build they did not: the far half of the map came out dark with a stepped edge across
+the middle. That is a shadow map failing, not lighting. Shadow map size, cascade split and
+distance all come from the quality level, which differs between the Game view and a player
+build, which is why it looked like a WebGL-only fault. The blocks are flat-topped and read by
+colour and by the shading difference between top and side faces, so cast shadows bought very
+little and cost a whole class of platform-dependent breakage.
+
+`GameBootstrap` logs one line at startup with the quality level, MSAA, shadow distance,
+pipeline and canvas size. In a build that goes to the browser console, which is the only way to
+tell a setting that never applied from one that applied and did not help.
+
 **Pipeline-agnostic rendering.** `ProjectAutoSetup` creates and assigns a URP asset on first
 load if the package is present. `MaterialLibrary` picks its shader from whichever pipeline is
 actually active, so the prototype also renders correctly on Built-in if URP setup is skipped.

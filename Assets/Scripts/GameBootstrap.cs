@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace DK
 {
@@ -82,6 +83,8 @@ namespace DK
             Imps = CreateImps();
             Tools = CreatePlayerTools(camera);
             CreateHud();
+
+            ReportRendering();
         }
 
         ResourceManager CreateResourceManager()
@@ -215,6 +218,24 @@ namespace DK
             return rig;
         }
 
+        /// <summary>
+        /// One line in the log saying what the renderer actually ended up with. In a build this
+        /// goes to the browser console, which is the only way to tell a setting that did not
+        /// apply from one that applied and did not help — the difference between the Editor and
+        /// a build has cost several rounds of guessing at screenshots.
+        /// </summary>
+        void ReportRendering()
+        {
+            var names = QualitySettings.names;
+            int level = QualitySettings.GetQualityLevel();
+            string quality = names != null && level >= 0 && level < names.Length ? names[level] : "?";
+
+            Debug.Log($"[DK] render: quality={quality} msaa={QualitySettings.antiAliasing}x " +
+                      $"shadowDistance={QualitySettings.shadowDistance:0} " +
+                      $"pipeline={(GraphicsSettings.defaultRenderPipeline != null ? "URP" : "Built-in")} " +
+                      $"screen={Screen.width}x{Screen.height} dpi={Screen.dpi:0}");
+        }
+
         Transform CreateLighting()
         {
             var go = new GameObject("Sun", typeof(Light));
@@ -228,11 +249,20 @@ namespace DK
             light.type = LightType.Directional;
             light.color = new Color(1f, 0.96f, 0.88f);
             light.intensity = 1.15f;
-            light.shadows = LightShadows.Soft;
+
+            // No cast shadows. Every block top shares one normal, so they must all light the
+            // same — and in a build they did not: the far half of the map came out dark with a
+            // stepped edge across the middle, which is a shadow map failing, not lighting.
+            // Shadow map size, cascade split and distance all come from the quality level,
+            // which differs between the Game view and a player build, so this looked like a
+            // WebGL-only fault. The blocks are flat-topped and read by colour and by the
+            // shading difference between top and side faces; cast shadows added very little
+            // and cost a whole class of platform-dependent breakage.
+            light.shadows = LightShadows.None;
 
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            // Enough ambient that shadowed floor keeps its shape instead of crushing to black.
-            RenderSettings.ambientLight = new Color(0.36f, 0.36f, 0.42f);
+            // Slightly lower now that nothing is being lifted out of shadow.
+            RenderSettings.ambientLight = new Color(0.32f, 0.32f, 0.38f);
             return go.transform;
         }
 
