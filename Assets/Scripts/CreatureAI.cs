@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace DK
@@ -64,14 +63,13 @@ namespace DK
         Transform _body;
         MaterialPropertyBlock _propertyBlock;
 
-        readonly List<Vector2Int> _scratch = new List<Vector2Int>();
-
         CreatureCatalog.Entry _stats;
         Vector2Int _fallbackHome;
         float _decisionCooldown;
         float _bobPhase;
         float _bodyBaseY;
         float _swingTimer;
+        float _chaseRepath;
         int _wanderSeed;
 
         static readonly Color CalmTint = new Color(1f, 1f, 1f);
@@ -219,11 +217,14 @@ namespace DK
 
         void TickIdle()
         {
+            // Ahead of the cooldown on purpose. Idling is paced so creatures do not re-plan
+            // every frame, but a hero in the dungeon is not something to get round to in a
+            // second and a bit — that pause read as creatures standing about during a raid.
+            if (TryFindFight()) return;
+
             _decisionCooldown -= Time.deltaTime;
             if (_decisionCooldown > 0f) return;
             _decisionCooldown = 0.4f;
-
-            if (TryFindFight()) return;
 
             // Reading home is also what moves a creature into a lair the player just built.
             var home = HomeCell;
@@ -248,6 +249,8 @@ namespace DK
 
         void TickGoingToLair(float dt)
         {
+            if (TryFindFight()) return;
+
             if (!HasLair)
             {
                 State = CreatureState.Idle;
@@ -322,7 +325,19 @@ namespace DK
                 return;
             }
 
-            if (_walker.Advance(dt)) return;
+            if (_walker.Advance(dt))
+            {
+                // The hero is walking too, so a route laid once goes stale. Re-lay it a couple
+                // of times a second rather than only on arrival, or the chase trails behind.
+                _chaseRepath -= dt;
+                if (_chaseRepath <= 0f)
+                {
+                    _chaseRepath = 0.4f;
+                    _walker.SetPath(_enemy.Cell);
+                }
+
+                return;
+            }
 
             // It moved. Chase it, and give up if it got somewhere we cannot follow.
             if (!_walker.SetPath(_enemy.Cell))
@@ -333,10 +348,15 @@ namespace DK
             }
         }
 
-        /// <summary>Looks for a hero worth walking to, and commits to it if there is one.</summary>
+        /// <summary>
+        /// Looks for a hero worth walking to, and commits to it if there is one. Costs a list
+        /// scan and nothing else while no raid is in progress, which is nearly all the time,
+        /// so it is safe to call every frame from every state that is not already fighting.
+        /// </summary>
         bool TryFindFight()
         {
             if (_battlefield == null || State == CreatureState.Leaving) return false;
+            if (_battlefield.CountOf(Side.Hero) == 0) return false;
             if (!_battlefield.TryFindNearestEnemy(this, _stats.AlertRange, out var enemy)) return false;
 
             return Engage(enemy);
@@ -353,7 +373,11 @@ namespace DK
             // TakeDamage, and resetting there let each side's hit hand the other a free swing:
             // the two fed each other every frame, so a duel meant to take seconds was decided
             // in about a tenth of one and looked like creatures vanishing on contact.
-            if (State != CreatureState.Fighting || !ReferenceEquals(_enemy, enemy)) _swingTimer = 0f;
+            if (State != CreatureState.Fighting || !ReferenceEquals(_enemy, enemy))
+            {
+                _swingTimer = 0f;
+                _chaseRepath = 0.4f;
+            }
 
             _enemy = enemy;
             State = CreatureState.Fighting;

@@ -47,7 +47,12 @@ namespace DK
             /// <summary>Seconds between swings.</summary>
             public float AttackInterval;
 
-            /// <summary>How far off it will notice a hero, in tiles.</summary>
+            /// <summary>
+            /// How far off it will notice a hero, in tiles. Bigger than any prototype map on
+            /// purpose: with no way for the player to order creatures into battle, a defender
+            /// that ignores a raid on the far side of the dungeon is a defender that does not
+            /// defend. The cap stays per-kind for the day a lazier creature wants one.
+            /// </summary>
             public int AlertRange;
 
             public Color Skin;
@@ -87,9 +92,8 @@ namespace DK
                         Damage = 8,
                         AttackInterval = 1.0f,
 
-                        // Wide enough that creatures sharing a lair block tend to notice the
-                        // same hero, which is what turns those duels into a brawl.
-                        AlertRange = 12,
+                        // Effectively the whole dungeon: every beetle answers every raid.
+                        AlertRange = 64,
 
                         Skin = new Color(0.30f, 0.52f, 0.34f),
                     };

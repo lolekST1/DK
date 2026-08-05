@@ -111,7 +111,8 @@ Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 A hero gate sits sealed in the opposite corner from the portal. Dig through to it and raids
 start after a grace period: a knight walks in, makes for the nearest vault tile with gold on
 it, takes what it can carry and heads back to the gate. Creatures leave their lairs to
-intercept it, which in practice means arriving one at a time: one beetle loses to a knight but
+intercept it from anywhere in the dungeon, breaking off whatever they were doing — which in
+practice means arriving one at a time: one beetle loses to a knight but
 leaves it under half health, so the second one through the door finishes it. Arriving together
 is better still. Either way the answer to a raid is housing and paying more creatures. Kill it before it reaches the gate and the loot falls on the floor, and
 the imps carry it home. Let it out and the gold is gone.
@@ -185,6 +186,13 @@ anything comes out of it, exactly like the portal. That makes expanding a decisi
 a chore: the map is not a safe box you empty at your own pace, and the two things worth digging
 towards pull in opposite directions.
 
+**Every creature answers every raid.** There is no way for the player to order a creature into
+battle, so a defender that ignores a hero on the far side of the dungeon simply does not
+defend. The alert range is wider than any prototype map, and looking for a fight happens ahead
+of the pacing that keeps idle creatures from re-planning every frame — a second of "I will get
+to it" reads as creatures standing about while the vault is robbed. The per-kind range stays in
+the catalog for the day a lazier creature wants one.
+
 **Heroes steal instead of destroying.** A raid that reached the heart could have ended the run,
 which for a prototype means writing a game-over screen and a restart before the combat itself
 is worth playing. Loot is a loss you read straight off the gold counter, it is recoverable if
@@ -243,6 +251,8 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   out of, nobody fetches it while there is nowhere to put it, and once the vault has room an imp
   carries it in. Claims are checked directly: two imps cannot hold the same pile, releasing
   hands it over, and an empty tile cannot be claimed at all.
+- **Defending** — a creature answers a raid from right across the map, and one already walking
+  to its lair turns round for it.
 - **Duels** — one creature against one hero, which is what a raid really looks like. Checks the
   swing cadence as well as the outcome: three seconds of fighting is three swings each, a
   one-on-one takes seconds rather than frames, and two beetles arriving one after the other

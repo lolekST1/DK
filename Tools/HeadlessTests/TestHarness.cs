@@ -122,6 +122,7 @@ public static class TestHarness
         PortalChecks();
 
         // --- heroes, raids and combat -----------------------------------------
+        DefenceChecks();
         DuelChecks();
         CombatChecks();
 
@@ -694,6 +695,62 @@ public static class TestHarness
             if (grid.IsClaimedByOther(new Vector2Int(x, z), null)) stillClaimed++;
 
         Check(stillClaimed == 0, $"no dig claim outlived the tile it was on ({stillClaimed} left)");
+    }
+
+    // --------------------------------------------------------------- defending
+
+    /// <summary>
+    /// Creatures have to go to the hero by themselves, from wherever they are and whatever
+    /// they were doing. Both halves of this were broken at once: a hero further off than the
+    /// old alert range was invisible, and a creature on its way to bed never looked up.
+    /// </summary>
+    static void DefenceChecks()
+    {
+        var world = NewWorld("Defence", 1337);
+        var battlefield = new GameObject("DefenceBattlefield").AddComponent<Battlefield>();
+
+        // A long corridor west out of the starting chamber, so the two ends are far apart.
+        for (int x = 0; x <= 7; x++) world.Grid.CarveChamber(new Vector2Int(x, 10), 0);
+
+        var farCorner = new Vector2Int(12, 12);
+        var corridorEnd = new Vector2Int(0, 10);
+
+        int distance = Mathf.Abs(farCorner.x - corridorEnd.x) + Mathf.Abs(farCorner.y - corridorEnd.y);
+        Check(distance > 12, $"the two ends are {distance} tiles apart, further than a creature used to see");
+
+        // --- a raid across the map is still a raid ----------------------------
+        var beetle = NewBeetle(world, battlefield, battlefield, farCorner);
+        var hero = NewHero(world, battlefield, corridorEnd);
+
+        float noticed = RunDuelUntil(hero, beetle, () => beetle.State == CreatureState.Fighting, 10f);
+        Check(noticed > 0f, $"the creature set off after a hero right across the dungeon ({noticed:0.0}s)");
+
+        float reached = RunDuelUntil(hero, beetle, () => beetle.Health < CreatureCatalog.Get(CreatureKind.Beetle).Health
+                                                      || hero.Health < HeroCatalog.Get(HeroKind.Knight).Health, 90f);
+        Check(reached > 0f, $"and got close enough to actually trade blows ({reached:0.0}s)");
+
+        // --- and one on its way to bed turns round ----------------------------
+        var world2 = NewWorld("Bedtime", 1337);
+        var field2 = new GameObject("BedtimeBattlefield").AddComponent<Battlefield>();
+
+        for (int x = 0; x <= 7; x++) world2.Grid.CarveChamber(new Vector2Int(x, 10), 0);
+
+        world2.Rooms.DepositAnywhere(1000);
+        Check(world2.Rooms.Build(1, 10, RoomType.Lair), "a lair at the far end of the corridor");
+
+        var sleeper = NewBeetle(world2, field2, field2, farCorner);
+
+        float tired = RunCreatureUntil(sleeper, () => sleeper.State == CreatureState.GoingToLair, 300f);
+        Check(tired > 0f, $"the creature got tired and set off for its lair ({tired:0.0}s)");
+        Check(sleeper.HasLair, "having claimed it on the way");
+
+        StepCreature(sleeper, 2f);
+        var onTheWay = sleeper.CurrentCell;
+        Check(onTheWay != farCorner, "it is genuinely walking, not still standing at the start");
+
+        var ambusher = NewHero(world2, field2, farCorner);
+        float turned = RunDuelUntil(ambusher, sleeper, () => sleeper.State == CreatureState.Fighting, 10f);
+        Check(turned > 0f, $"a hero behind it makes it break off and turn round ({turned:0.0}s)");
     }
 
     // ------------------------------------------------------------------- duels
