@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -11,35 +12,41 @@ namespace DK
     [DefaultExecutionOrder(-100)]
     public class GameBootstrap : MonoBehaviour
     {
-        [Header("Grid")]
+        // Deliberately not serialized. A public field on a component is copied into the scene
+        // asset the first time it is saved, and from then on the scene wins: changing a default
+        // here would leave a clone still running the old number, with nothing on screen to say
+        // why. Every other balance figure in this project lives in code — RoomCatalog,
+        // CreatureCatalog, HeroCatalog — and these now do too.
+
+        // --- grid ---
         // 32x32 holds roughly a hundred gold seams. At 20x20 a single raid could take most of
         // what the dungeon had mined, and there was not enough left in the rock to recover
         // before payday came round again.
-        public int GridWidth = 32;
-        public int GridDepth = 32;
-        public int Seed = 1337;
-        [Range(0f, 0.5f)] public float GoldChance = 0.10f;
-        public int StartingChamberRadius = 2;
+        [NonSerialized] public int GridWidth = 32;
+        [NonSerialized] public int GridDepth = 32;
+        [NonSerialized] public int Seed = 1337;
+        [NonSerialized] public float GoldChance = 0.10f;
+        [NonSerialized] public int StartingChamberRadius = 2;
 
-        [Header("Portal")]
-        public int PortalRadius = 1;
-        public float CreatureSpawnInterval = 20f;
-        public float PaydayInterval = 45f;
-        public int MaxCreatures = 8;
+        // --- portal ---
+        [NonSerialized] public int PortalRadius = 1;
+        [NonSerialized] public float CreatureSpawnInterval = 20f;
+        [NonSerialized] public float PaydayInterval = 45f;
+        [NonSerialized] public int MaxCreatures = 8;
 
-        [Header("Heroes")]
-        public int HeroGateRadius = 1;
-        public float FirstRaidDelay = 45f;
-        public float RaidInterval = 90f;
-        public int MaxHeroes = 4;
-        public int WavesBeforeLord = 5;
-        public int HeartHealth = DungeonHeart.DefaultHealth;
+        // --- heroes ---
+        [NonSerialized] public int HeroGateRadius = 1;
+        [NonSerialized] public float FirstRaidDelay = 45f;
+        [NonSerialized] public float RaidInterval = 90f;
+        [NonSerialized] public int MaxHeroes = 4;
+        [NonSerialized] public int WavesBeforeLord = 5;
+        [NonSerialized] public int HeartHealth = DungeonHeart.DefaultHealth;
 
-        [Header("Imps")]
+        // --- imps ---
         // More ground to cover, so more diggers. Still one crew, still one queue.
-        public int ImpCount = 6;
-        public float ImpMoveSpeed = 3.0f;
-        public float ImpDigDuration = 1.2f;
+        [NonSerialized] public int ImpCount = 6;
+        [NonSerialized] public float ImpMoveSpeed = 3.0f;
+        [NonSerialized] public float ImpDigDuration = 1.2f;
 
         public GridManager Grid { get; private set; }
         public RoomManager Rooms { get; private set; }

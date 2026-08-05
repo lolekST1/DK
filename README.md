@@ -128,9 +128,13 @@ the imps carry it home. Let it out and the gold is gone.
 
 ## Design notes
 
-**Everything procedural.** No prefabs, no Inspector references. `GameBootstrap` has a few
-tunable public fields (grid size, seed, gold density, imp speed) with working defaults; the
-scene runs untouched from a fresh clone.
+**Everything procedural.** No prefabs, no Inspector references, and nothing serialized on the
+component either. Grid size, seed, gold density, wave timings and the rest are plain fields on
+`GameBootstrap` marked `[NonSerialized]`, so the code is the only copy. They used to be
+ordinary public fields, which Unity writes into the scene asset the first time it is saved —
+after which the scene silently wins, and changing a default in code leaves a clone running the
+old number with nothing on screen to explain it. Every other balance figure here already lived
+in code; these now do too.
 
 **A crew, not a worker.** `GameBootstrap.ImpCount` imps share one dig queue. Each claims a
 tile in `GridManager` before walking to it and releases the claim when it finishes or the
