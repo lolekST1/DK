@@ -111,6 +111,9 @@ public static class TestHarness
         FullVaultChecks();
         LairChecks();
 
+        // --- nobody ever stands inside rock -----------------------------------
+        SolidGroundChecks();
+
         // --- portal, creatures and payroll ------------------------------------
         PortalChecks();
 
@@ -448,6 +451,88 @@ public static class TestHarness
         imp.Configure(world.Grid, world.Economy, world.Rooms,
             new GameObject(name + "Body").transform, new GameObject(name + "Nugget").transform, home);
         return imp;
+    }
+
+    // ------------------------------------------------------------ solid ground
+
+    /// <summary>
+    /// Walks a full crew through a long dig with the whole grid queued, checking every single
+    /// frame that each imp is standing on a dug-out tile. An imp inside rock is the "walking
+    /// through walls" bug, and it is only ever visible for a frame or two at a time.
+    /// </summary>
+    static void SolidGroundChecks()
+    {
+        var grid = new GameObject("SolidGrid").AddComponent<GridManager>();
+        grid.Configure(20, 20, 4242, 0.10f, 2);
+
+        var rooms = new GameObject("SolidRooms").AddComponent<RoomManager>();
+        rooms.Configure(grid);
+
+        var economy = new GameObject("SolidEconomy").AddComponent<ResourceManager>();
+        economy.Configure(rooms);
+
+        var imps = new List<ImpAI>();
+        for (int i = 0; i < 4; i++)
+        {
+            var impObject = new GameObject($"SolidImp_{i}");
+            var imp = impObject.AddComponent<ImpAI>();
+            imp.MoveSpeed = 3f;
+            imp.DigDuration = 0.4f;
+            imp.Configure(grid, economy, rooms, new GameObject("Body").transform,
+                          new GameObject("Nugget").transform, grid.BaseCell);
+            imps.Add(imp);
+        }
+
+        // Queue the whole map, so the crew is constantly re-targeting and crossing paths.
+        for (int x = 0; x < grid.Width; x++)
+        for (int z = 0; z < grid.Depth; z++)
+            grid.MarkForDigging(x, z);
+
+        float clearedAt = -1f;
+        int offGrid = 0;
+        var firstOffence = new Vector2Int(-1, -1);
+        int frames = (int)(400f / Time.deltaTime);
+
+        for (int frame = 0; frame < frames; frame++)
+        {
+            for (int i = 0; i < imps.Count; i++)
+            {
+                ImpUpdate.Invoke(imps[i], null);
+
+                var cell = imps[i].CurrentCell;
+                if (grid.IsWalkable(cell)) continue;
+
+                if (offGrid == 0) firstOffence = cell;
+                offGrid++;
+            }
+
+            if (grid.QueuedCount == 0) { clearedAt = frame * Time.deltaTime; break; }
+        }
+
+        Check(offGrid == 0,
+            offGrid == 0
+                ? "imps never stand inside rock while clearing the whole map"
+                : $"imps stood inside rock on {offGrid} frame(s), first at {firstOffence.x},{firstOffence.y}");
+
+        // The crew must also finish the job. An imp that quietly stops digging leaves tiles
+        // marked forever, which is what a stalled state machine looks like from the outside.
+        Check(grid.QueuedCount == 0,
+            grid.QueuedCount == 0
+                ? "the crew dug out every marked tile"
+                : $"the crew stopped digging with {grid.QueuedCount} tile(s) still marked");
+
+        // A throughput guard, not a stopwatch. The crew clears this map in ~200s; it took
+        // ~295s when an imp holding gold sat out a full eight seconds per seam against a
+        // vault that was already full, which is what "the imps stopped digging" looked like.
+        Check(clearedAt > 0f && clearedAt < 250f, $"the crew kept working through a full vault ({clearedAt:0.0}s)");
+        Check(economy.TotalSpilled > 0, "a vault this small does get gold spilled on the floor");
+
+        int stillClaimed = 0;
+        for (int x = 0; x < grid.Width; x++)
+        for (int z = 0; z < grid.Depth; z++)
+            if (grid.IsClaimedByOther(new Vector2Int(x, z), null)) stillClaimed++;
+
+        Check(stillClaimed == 0, $"no dig claim outlived the tile it was on ({stillClaimed} left)");
     }
 
     // ------------------------------------------------------------------ portal

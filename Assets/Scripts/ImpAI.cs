@@ -37,6 +37,14 @@ namespace DK
         /// </summary>
         public float HaulPatience = 8f;
 
+        /// <summary>
+        /// The same patience when every vault tile is genuinely full. Waiting is only worth it
+        /// while there is space somewhere we cannot currently reach — when there is none at
+        /// all, nothing changes by standing still, and a crew parked holding gold is exactly
+        /// what "the imps stopped digging" looks like from the outside.
+        /// </summary>
+        public float FullVaultPatience = 1.5f;
+
         public ImpState State { get; private set; } = ImpState.Idle;
 
         /// <summary>Gold mined and not yet banked.</summary>
@@ -163,11 +171,7 @@ namespace DK
             }
 
             // Nothing left to claim: idle at home, walking back if we wandered off.
-            if (CurrentCell != home && Pathfinder.TryFindPath(_grid, CurrentCell, home, _path))
-            {
-                _pathIndex = 0;
-                State = ImpState.ReturnToBase;
-            }
+            if (CurrentCell != home && SetPath(home)) State = ImpState.ReturnToBase;
         }
 
         void TickMoveToTarget(float dt)
@@ -248,8 +252,10 @@ namespace DK
 
             // Nowhere to bank. Give it a while, then dump the load and get back to work —
             // an imp frozen forever holding gold reads as a broken imp, not as a full vault.
+            float patience = _rooms != null && _rooms.FreeCapacity == 0 ? FullVaultPatience : HaulPatience;
+
             _haulWaitTimer += dt;
-            if (_haulWaitTimer >= HaulPatience)
+            if (_haulWaitTimer >= patience)
             {
                 if (_resources != null) _resources.ReportSpill(CarriedGold);
                 CarriedGold = 0;
@@ -275,9 +281,7 @@ namespace DK
                 return;
             }
 
-            var home = HomeCell;
-            if (CurrentCell != home) Pathfinder.TryFindPath(_grid, CurrentCell, home, _path);
-            _pathIndex = 0;
+            SetPath(HomeCell);
         }
 
         void TickReturnToBase(float dt)
@@ -365,6 +369,20 @@ namespace DK
 
             HasDigTarget = false;
             if (_grid != null) _grid.ReleaseTile(_digTarget, this);
+        }
+
+        /// <summary>
+        /// Routes to a goal from wherever we are standing right now.
+        ///
+        /// Every path has to start at the current cell, because <see cref="FollowPath"/> walks
+        /// a straight line to the next waypoint and only the grid guarantees that line is
+        /// clear. Re-running an old path from index zero used to send an imp diagonally
+        /// through solid rock to catch up with a waypoint it had already passed.
+        /// </summary>
+        bool SetPath(Vector2Int goal)
+        {
+            _pathIndex = 0;
+            return Pathfinder.TryFindPath(_grid, CurrentCell, goal, _path);
         }
 
         /// <summary>Advances along the current path. Returns true while still moving.</summary>

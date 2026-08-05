@@ -119,10 +119,13 @@ rather than a cosmetic room, and it is why `ResourceManager` is a facade over `R
 instead of holding an int of its own — there is only one copy of the number.
 
 **A full vault must not look like a bug.** An imp that cannot bank its load drifts home and
-keeps asking for eight seconds, then dumps the gold and goes back to work. Freezing the crew
-until the player notices would be the more "correct" simulation and the worse game: a stalled
-imp is indistinguishable from a broken one, while spilled gold is a cost you can see in the
-HUD and fix.
+keeps asking, then dumps the gold and goes back to work. Freezing the crew until the player
+notices would be the more "correct" simulation and the worse game: a stalled imp is
+indistinguishable from a broken one, while spilled gold is a cost you can see in the HUD and
+fix. How long it asks depends on why it failed — eight seconds when the vault has space it
+could not reach, since that can change, but only a second and a half when every tile is
+genuinely full, because nothing will change by standing still. Half a crew parked holding gold
+is the exact thing this note is trying to avoid.
 
 **Land you dug is land you own.** The original game makes imps claim floor tile by tile before
 you can build on it. Here every dug tile is immediately yours. That drops a whole AI state and
@@ -188,6 +191,10 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   per-tile deposit ceilings, and selling returning both the stored gold and half the cost.
 - **The haul** — a corridor dug to a gold seam and the load carried back into a vault, with
   the banked total checked to the gold piece.
+- **Solid ground** — a crew of four clears a fully marked map while every imp is checked, on
+  every simulated frame, to be standing on dug-out floor. Paths are only ever walked from the
+  cell the imp is standing in, and this is what proves it. It also times the run against a
+  full vault, so an imp that sits out its patience instead of digging shows up as a regression.
 - **The portal** — nothing arrives through a portal still sealed in rock, nothing arrives with
   no free lair, and a creature walks in once a corridor and a lair both exist. It then moves
   into that lair unprompted.
