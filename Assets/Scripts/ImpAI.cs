@@ -15,12 +15,15 @@ namespace DK
 
     /// <summary>
     /// A worker creature: picks the nearest reachable queued tile, walks to a tile adjacent
-    /// to it, digs for a fixed time, hauls anything it mined to a vault, then looks for more
-    /// work or heads back to its lair.
+    /// to it, digs for a fixed time, and goes straight back for more rock.
+    ///
+    /// Mined gold drops where the seam was rather than being carried off, so digging never
+    /// stops to run an errand. Collecting those piles is what an imp does when it has no rock
+    /// left to break — with a crew, whoever runs out of digging first becomes the porter.
     ///
     /// Several imps share one grid, so each claims its target and never poaches another's.
-    /// Gold is carried, not credited on the spot — an imp with a full load and no vault to
-    /// put it in waits at home, which is what makes building a treasury urgent.
+    /// Gold still has to be walked into a vault to count, which is what makes building a
+    /// treasury urgent.
     /// </summary>
     public class ImpAI : MonoBehaviour
     {
@@ -175,17 +178,18 @@ namespace DK
                 return;
             }
 
-            // Gold already mined and lying on the floor is worth more than gold still in the
-            // rock: it only needs carrying, and it is only there because the vault was full.
-            if (TrySelectLooseGold())
-            {
-                State = ImpState.FetchGold;
-                return;
-            }
-
             if (TrySelectDigTarget())
             {
                 State = ImpState.MoveToTarget;
+                return;
+            }
+
+            // Only once this imp has no rock left to break: the dig queue is the player's
+            // order, and gold on the floor keeps. An imp that finds nothing to dig while the
+            // others are still busy becomes the one who does the fetching.
+            if (TrySelectLooseGold())
+            {
+                State = ImpState.FetchGold;
                 return;
             }
 
@@ -226,12 +230,20 @@ namespace DK
 
             int gold = _grid.DigOut(_digTarget.x, _digTarget.y);
 
+            // Gold falls where the seam was and stays there. Carrying it in immediately would
+            // cost the imp the rest of its dig, and clearing rock is what the player asked for
+            // — somebody collects the piles once there is nothing left to dig.
+            if (gold > 0)
+            {
+                if (_loose != null) _loose.Drop(_digTarget, gold);
+                else CarriedGold += gold;
+            }
+
             ReleaseTarget();
             _repathCooldown = 0f;
 
-            if (gold > 0)
+            if (CarriedGold > 0)
             {
-                CarriedGold += gold;
                 UpdateCarryIcon();
                 _haulHasTarget = false;
                 _haulWaitTimer = 0f;

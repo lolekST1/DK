@@ -116,6 +116,7 @@ public static class TestHarness
 
         // --- gold dropped on the floor is not gold lost ------------------------
         SpilledGoldChecks();
+        DigBeforeHaulingChecks();
 
         // --- portal, creatures and payroll ------------------------------------
         PortalChecks();
@@ -215,33 +216,38 @@ public static class TestHarness
         float cleared = RunUntil(imp, () => world.Grid.QueuedCount == 0, 400f);
         Check(cleared > 0f, $"a full vault does not stop the digging ({cleared:0.0}s)");
 
-        float dumped = RunUntil(imp, () => imp.CarriedGold == 0, 60f);
-        Check(dumped > 0f, $"the imp dumped the load it could not bank after {dumped:0.0}s");
-        Check(world.Economy.TotalSpilled >= GridManager.GoldPerSeam,
-            $"the spill was recorded ({world.Economy.TotalSpilled} gold)");
+        Check(imp.CarriedGold == 0, "the imp never broke off digging to carry gold");
+        Check(world.Spillage.Total >= GridManager.GoldPerSeam,
+            $"the mined seam is lying on the floor ({world.Spillage.Total} gold)");
 
-        // Give the imp somewhere to put gold and the next seam banks normally again.
+        Step(imp, 10f);
+        Check(world.Spillage.Total >= GridManager.GoldPerSeam,
+            "nobody hauls gold about while there is nowhere to put it");
+
+        // Give the imp somewhere to put gold and the floor gets tidied up.
         Check(world.Rooms.Build(8, 8, RoomType.Treasury), "treasury built out of the full heart");
+
+        int floorBefore = world.Spillage.Total;
+        int vaultBefore = world.Economy.Gold;
+
+        float collected = RunUntil(imp, () => world.Spillage.Total == 0 && imp.CarriedGold == 0, 300f);
+        Check(collected > 0f, $"the imp collected the floor once there was room ({collected:0.0}s)");
+        Check(world.Economy.Gold == vaultBefore + floorBefore,
+            $"every piece off the floor went into the vault (gold {world.Economy.Gold})");
 
         var seam = FindDiggableGoldNextToFloor(world.Grid);
         Check(seam.x >= 0, "the opened corridor exposed another gold seam to mine");
 
-        int spilledBefore = world.Economy.TotalSpilled;
         int bankedBefore = world.Economy.Gold;
-        int onFloor = world.Spillage.Total;
-        Check(onFloor == GridManager.GoldPerSeam, $"the dumped load is still lying on the floor ({onFloor})");
-
         world.Grid.MarkForDigging(seam.x, seam.y);
 
         float second = RunUntil(imp,
-            () => imp.CarriedGold == 0 && world.Grid.QueuedCount == 0 && world.Spillage.Total == 0, 200f);
-        Check(second > 0f, $"the second seam was mined and the floor cleared in {second:0.0}s");
-
-        // The new treasury takes both: the seam just mined, and the pile dropped back when
-        // there was nowhere to put it.
-        Check(world.Economy.Gold == bankedBefore + GridManager.GoldPerSeam + onFloor,
-            $"it banked the new seam and the old spill (gold {world.Economy.Gold}, was {bankedBefore})");
-        Check(world.Economy.TotalSpilled == spilledBefore, "nothing spilled once there was room again");
+            () => imp.CarriedGold == 0 && world.Grid.QueuedCount == 0 && world.Spillage.Total == 0, 300f);
+        Check(second > 0f, $"the second seam was mined, collected and banked in {second:0.0}s");
+        Check(world.Economy.Gold == bankedBefore + GridManager.GoldPerSeam,
+            $"it went into the new treasury (gold {world.Economy.Gold}, was {bankedBefore})");
+        Check(world.Economy.TotalSpilled == 0,
+            "no imp ever had to put a load back down, so nothing counts as spilled");
     }
 
     /// <summary>A gold seam touching already-dug floor, so an imp can actually reach it.</summary>
@@ -467,6 +473,81 @@ public static class TestHarness
         return imp;
     }
 
+    // ------------------------------------------------------- digging comes first
+
+    /// <summary>
+    /// The rule from the original game: imps clear rock, and gold lies where it fell until
+    /// there is nothing left to dig. An imp that breaks off mid-queue to run a nugget to the
+    /// vault is the thing this guards against — with plenty of vault space available, so the
+    /// only reason not to carry gold is that digging outranks it.
+    /// </summary>
+    static void DigBeforeHaulingChecks()
+    {
+        var world = NewWorld("Order", 4242);
+
+        world.Rooms.DepositAnywhere(1000);
+        for (int x = 8; x <= 11; x++)
+            Check(world.Rooms.Build(x, 8, RoomType.Treasury), $"treasury tile at {x},8");
+
+        Check(world.Rooms.FreeCapacity > 500, $"plenty of vault to carry gold into ({world.Rooms.FreeCapacity})");
+
+        var imps = new List<ImpAI>();
+        for (int i = 0; i < 4; i++) imps.Add(AddImp(world, $"OrderImp_{i}", world.Grid.BaseCell));
+
+        for (int x = 0; x < world.Grid.Width; x++)
+        for (int z = 0; z < world.Grid.Depth; z++)
+            world.Grid.MarkForDigging(x, z);
+
+        int carryingFrames = 0;
+        int frames = (int)(400f / Time.deltaTime);
+        float clearedAt = -1f;
+
+        for (int frame = 0; frame < frames; frame++)
+        {
+            foreach (var imp in imps) ImpUpdate.Invoke(imp, null);
+
+            // Late in the run the last few tiles are all claimed by other imps, and an imp with
+            // nothing left to claim is supposed to go fetching. Only judge the busy stretch.
+            if (world.Grid.QueuedCount > 20)
+                foreach (var imp in imps)
+                    if (imp.State == ImpState.HaulGold || imp.State == ImpState.FetchGold) carryingFrames++;
+
+            if (world.Grid.QueuedCount == 0) { clearedAt = frame * Time.deltaTime; break; }
+        }
+
+        Check(carryingFrames == 0,
+            carryingFrames == 0
+                ? "no imp carried gold while there was still rock queued to dig"
+                : $"imps spent {carryingFrames} frame(s) hauling gold with the dig queue still full");
+
+        Check(clearedAt > 0f, $"the crew cleared the map ({clearedAt:0.0}s)");
+        Check(world.Spillage.Total > 0 || world.Economy.Gold > 1000,
+            "the mined gold is either on the floor or already banked");
+
+        // And once the digging is done, the crew turns porter -- until the vault is full,
+        // which on this map it will be: four treasury tiles cannot hold a whole map of seams.
+        int floorAfterDigging = world.Spillage.Total;
+
+        float tidied = RunCrewUntil(imps,
+            () => world.Spillage.Total == 0 || world.Rooms.FreeCapacity == 0, 600f);
+        Check(tidied > 0f, $"with nothing left to dig, the crew went and collected it ({tidied:0.0}s)");
+        Check(world.Spillage.Total < floorAfterDigging,
+            $"the floor got cleared down ({floorAfterDigging} -> {world.Spillage.Total} gold)");
+        Check(world.Rooms.FreeCapacity == 0,
+            "collecting only stopped because the vault filled up, not because the imps gave up");
+    }
+
+    static float RunCrewUntil(List<ImpAI> imps, Func<bool> done, float timeoutSeconds)
+    {
+        int steps = (int)(timeoutSeconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+        {
+            foreach (var imp in imps) ImpUpdate.Invoke(imp, null);
+            if (done()) return (i + 1) * Time.deltaTime;
+        }
+        return -1f;
+    }
+
     // ------------------------------------------------------------ spilled gold
 
     /// <summary>
@@ -488,13 +569,14 @@ public static class TestHarness
             world.Grid.MarkForDigging(cell.x, cell.y);
 
         float dropped = RunUntil(imp, () => world.Spillage.Total > 0, 300f);
-        Check(dropped > 0f, $"an imp with nowhere to bank drops its load on the floor ({dropped:0.0}s)");
+        Check(dropped > 0f, $"mined gold lands on the floor ({dropped:0.0}s)");
 
         int onFloor = world.Spillage.Total;
         Check(onFloor == GridManager.GoldPerSeam, $"the whole seam is on the floor ({onFloor})");
+        Check(world.Spillage.AmountAt(target) == GridManager.GoldPerSeam,
+            "it lands on the tile the seam was in, not wherever the imp happened to stand");
         Check(world.Spillage.PileCount == 1, "it is one pile, not a trail of crumbs");
         Check(world.Economy.LooseGold == onFloor, "the economy reports gold lying on the floor");
-        Check(world.Economy.TotalSpilled == onFloor, "dropping it is still recorded as a spill");
 
         // An imp will not pick a pile up with nowhere to put it, or it would only drop it again.
         Step(imp, 5f);
@@ -508,8 +590,6 @@ public static class TestHarness
         Check(fetched > 0f, $"an imp went back for the gold on the floor and banked it ({fetched:0.0}s)");
         Check(world.Spillage.Total == 0, "the floor is clear again");
         Check(world.Spillage.PileCount == 0, "and the pile is gone with it");
-        Check(world.Economy.TotalSpilled == onFloor,
-            "the lifetime spill tally does not un-count itself when the gold comes back");
 
         // --- claims keep the crew off each other's piles ----------------------
         var first = new object();
@@ -602,7 +682,7 @@ public static class TestHarness
         // ~295s when an imp holding gold sat out a full eight seconds per seam against a
         // vault that was already full, which is what "the imps stopped digging" looked like.
         Check(clearedAt > 0f && clearedAt < 250f, $"the crew kept working through a full vault ({clearedAt:0.0}s)");
-        Check(economy.TotalSpilled > 0, "a vault this small does get gold spilled on the floor");
+        Check(loose.Total > 0, "a vault this small leaves mined gold lying on the floor");
 
         int stillClaimed = 0;
         for (int x = 0; x < grid.Width; x++)

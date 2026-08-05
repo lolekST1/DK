@@ -41,13 +41,13 @@ status line says why.
 ### The loop
 
 You start with a 3×3 dungeon heart holding 100 gold and 225 of vault space. Mark rock, the
-imps dig it. A gold seam does **not** credit a counter — the imp picks the gold up, carries it
-to the nearest vault tile with room, and drops it there, so the heart fills up fast and you
-have to spend your opening 100 gold on a treasury. An imp that finds every vault full waits
-about eight seconds and then dumps its load on the floor, which the HUD reports as spilled
-gold — but not gold lost: the pile stays on the floor, and an imp comes back for it the moment
-you make room in the vault. Build a lair and an imp moves in on its own; imps with somewhere to
-sleep dig 30% faster.
+imps dig it. A gold seam does **not** credit a counter: the gold falls where the seam was and
+lies there. Imps keep digging as long as there is anything left in the queue, and only turn
+porter once they have no rock left to break — with a crew, whoever runs out of digging first
+starts collecting while the others carry on. Gold only counts once it is walked into a vault,
+so the heart fills up fast and you have to spend your opening 100 gold on a treasury. Piles you
+have nowhere to store just stay on the floor until you build one. Build a lair and an imp moves
+in on its own; imps with somewhere to sleep dig 30% faster.
 
 The portal sits in a sealed cavern three quarters of the way across the map. Dig a route to it
 and creatures start arriving — but only while a lair is standing empty, and imps sleep in the
@@ -121,12 +121,18 @@ ceiling, and an imp has to walk it there. That is what makes the treasury a real
 rather than a cosmetic room, and it is why `ResourceManager` is a facade over `RoomManager`
 instead of holding an int of its own — there is only one copy of the number.
 
-**Dropped is not destroyed.** Gold an imp could not bank stays on the floor as a pile you can
-see, and any imp with vault space to fill will go and fetch it — fetching beats digging in the
-idle check, because gold already out of the rock only needs carrying. Piles are claimed one imp
-at a time, the same way dig targets are, so a spill does not drag the whole crew across the map.
-Deleting the gold instead would have made a full vault a silent, permanent tax on a mistake the
-player can already see and fix.
+**Digging beats carrying.** Mined gold drops where the seam was and stays there; collecting it
+is what an imp does when it has nothing left to dig. An imp that broke off mid-queue to run each
+nugget to the vault spent most of its time walking, and clearing rock is what the player
+actually asked for. It also gives a crew a natural division of labour for free: the imp that
+runs out of reachable dig work becomes the porter while the rest keep breaking rock. Piles are
+claimed one imp at a time, the same way dig targets are, so one spill does not drag the whole
+crew across the map.
+
+**Dropped is not destroyed.** Gold you have nowhere to store is not deleted, it is left on the
+floor where you can see it, and it goes into the vault the moment you build one. Deleting it
+would have made a full vault a silent, permanent tax on a mistake the player can already see
+and fix.
 
 **A full vault must not look like a bug.** An imp that cannot bank its load drifts home and
 keeps asking, then dumps the gold and goes back to work. Freezing the crew until the player
@@ -201,10 +207,13 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   per-tile deposit ceilings, and selling returning both the stored gold and half the cost.
 - **The haul** — a corridor dug to a gold seam and the load carried back into a vault, with
   the banked total checked to the gold piece.
-- **Spilled gold** — a full vault leaves exactly one pile of the right size on the floor,
-  nobody fetches it while there is still nowhere to put it, and once the vault has room an imp
+- **Spilled gold** — a mined seam leaves exactly one pile of the right size on the tile it came
+  out of, nobody fetches it while there is nowhere to put it, and once the vault has room an imp
   carries it in. Claims are checked directly: two imps cannot hold the same pile, releasing
   hands it over, and an empty tile cannot be claimed at all.
+- **Digging first** — with a whole map queued and vault space to spare, no imp spends a single
+  frame carrying gold while there is still rock queued to break. Once the queue is empty the
+  same crew collects the floor, and stops only when the vault is full rather than giving up.
 - **Solid ground** — a crew of four clears a fully marked map while every imp is checked, on
   every simulated frame, to be standing on dug-out floor. Paths are only ever walked from the
   cell the imp is standing in, and this is what proves it. It also times the run against a
