@@ -111,8 +111,9 @@ Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 A hero gate sits sealed in the opposite corner from the portal. Dig through to it and raids
 start after a grace period: a knight walks in, makes for the nearest vault tile with gold on
 it, takes what it can carry and heads back to the gate. Creatures leave their lairs to
-intercept it — one beetle loses to a knight, two win, so the answer to a raid is housing and
-paying more creatures. Kill it before it reaches the gate and the loot falls on the floor, and
+intercept it, which in practice means arriving one at a time: one beetle loses to a knight but
+leaves it under half health, so the second one through the door finishes it. Arriving together
+is better still. Either way the answer to a raid is housing and paying more creatures. Kill it before it reaches the gate and the loot falls on the floor, and
 the imps carry it home. Let it out and the gold is gone.
 
 ## Design notes
@@ -242,6 +243,10 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   out of, nobody fetches it while there is nowhere to put it, and once the vault has room an imp
   carries it in. Claims are checked directly: two imps cannot hold the same pile, releasing
   hands it over, and an empty tile cannot be claimed at all.
+- **Duels** — one creature against one hero, which is what a raid really looks like. Checks the
+  swing cadence as well as the outcome: three seconds of fighting is three swings each, a
+  one-on-one takes seconds rather than frames, and two beetles arriving one after the other
+  kill a knight.
 - **Raids** — nothing comes through a gate still sealed in rock, digging through opens it, and
   a hero walks in on the clock. Then the three ways a raid can end: robbed and killed while
   carrying, so the loot lands on the floor and is counted as recovered; met by four defenders

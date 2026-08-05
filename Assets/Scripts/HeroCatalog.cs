@@ -40,12 +40,12 @@ namespace DK
                     {
                         Name = "Knight",
 
-                        // Beats one beetle and loses to two. The dungeon's answer to a raid is
-                        // supposed to be "house and pay more creatures", which is the loop the
-                        // gold economy already runs on.
+                        // Beats one beetle and loses to two, counting them arriving one after
+                        // the other. The dungeon's answer to a raid is "house and pay more
+                        // creatures", which is the loop the gold economy already runs on.
                         Health = 120,
-                        Damage = 10,
-                        AttackInterval = 1.1f,
+                        Damage = 8,
+                        AttackInterval = 1.2f,
                         MoveSpeed = 2.6f,
 
                         // Enough to hurt without emptying a developed vault in one visit.

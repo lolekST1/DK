@@ -122,6 +122,7 @@ public static class TestHarness
         PortalChecks();
 
         // --- heroes, raids and combat -----------------------------------------
+        DuelChecks();
         CombatChecks();
 
         Console.WriteLine(_failures == 0
@@ -693,6 +694,92 @@ public static class TestHarness
             if (grid.IsClaimedByOther(new Vector2Int(x, z), null)) stillClaimed++;
 
         Check(stillClaimed == 0, $"no dig claim outlived the tile it was on ({stillClaimed} left)");
+    }
+
+    // ------------------------------------------------------------------- duels
+
+    /// <summary>
+    /// One creature against one hero, which is what a raid actually looks like: defenders
+    /// arrive from their lairs one at a time. Guards the swing cadence as well as the outcome
+    /// — both sides once fed each other a free attack on every hit, so a fight that should
+    /// take ten seconds was over in a tenth of one and read as creatures dying on contact.
+    /// </summary>
+    static void DuelChecks()
+    {
+        var world = NewWorld("Duel", 1337);
+        var battlefield = new GameObject("DuelBattlefield").AddComponent<Battlefield>();
+
+        var arena = world.Grid.BaseCell;
+        var hero = NewHero(world, battlefield, arena);
+        var beetle = NewBeetle(world, battlefield, battlefield, arena + new Vector2Int(0, 1));
+
+        var heroStats = HeroCatalog.Get(HeroKind.Knight);
+        var beetleStats = CreatureCatalog.Get(CreatureKind.Beetle);
+
+        // Three seconds of a one-on-one is three swings each, give or take one.
+        StepDuel(hero, beetle, 3f);
+
+        int heroLost = heroStats.Health - hero.Health;
+        int beetleLost = beetleStats.Health - beetle.Health;
+
+        Check(heroLost >= beetleStats.Damage * 2 && heroLost <= beetleStats.Damage * 4,
+            $"the beetle swung about three times in three seconds ({heroLost} damage dealt)");
+        Check(beetleLost >= heroStats.Damage && beetleLost <= heroStats.Damage * 3,
+            $"and so did the knight ({beetleLost} damage dealt)");
+        Check(beetle.IsAlive && hero.IsAlive, "nobody is deleted on contact");
+
+        // See it through: one beetle loses, but not for free.
+        float duel = RunDuelUntil(hero, beetle, () => !beetle.IsAlive || !hero.IsAlive, 120f);
+        Check(duel > 5f, $"a one-on-one takes seconds, not frames ({duel:0.0}s)");
+        Check(!beetle.IsAlive && hero.IsAlive, "one beetle loses to a knight");
+        Check(hero.Health < heroStats.Health / 2,
+            $"but leaves it under half health ({hero.Health}/{heroStats.Health})");
+
+        // The next one through the door finishes it. This is the claim the catalog makes.
+        var second = NewBeetle(world, battlefield, battlefield, hero.CurrentCell + new Vector2Int(0, -1));
+        float finish = RunDuelUntil(hero, second, () => !second.IsAlive || !hero.IsAlive, 120f);
+
+        Check(finish > 0f, $"the second beetle got there ({finish:0.0}s)");
+        Check(!hero.IsAlive, "two beetles arriving one after the other kill a knight");
+        Check(second.IsAlive, "and the second one lives to tell it");
+    }
+
+    static HeroAI NewHero(World world, Battlefield battlefield, Vector2Int cell)
+    {
+        var hero = new GameObject("DuelHero").AddComponent<HeroAI>();
+        hero.Configure(world.Grid, world.Rooms, world.Economy, world.Spillage, battlefield,
+                       HeroKind.Knight, new GameObject("DuelHeroBody").transform, null, cell);
+        return hero;
+    }
+
+    static CreatureAI NewBeetle(World world, Battlefield battlefield, Battlefield unused, Vector2Int cell)
+    {
+        var beetle = new GameObject("DuelBeetle").AddComponent<CreatureAI>();
+        beetle.Configure(world.Grid, world.Rooms, battlefield, CreatureKind.Beetle,
+                         new GameObject("DuelBeetleBody").transform, null, cell);
+        return beetle;
+    }
+
+    static void StepDuel(HeroAI hero, CreatureAI creature, float seconds)
+    {
+        int steps = (int)(seconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+        {
+            HeroUpdate.Invoke(hero, null);
+            CreatureUpdate.Invoke(creature, null);
+        }
+    }
+
+    static float RunDuelUntil(HeroAI hero, CreatureAI creature, Func<bool> done, float timeoutSeconds)
+    {
+        int steps = (int)(timeoutSeconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+        {
+            HeroUpdate.Invoke(hero, null);
+            CreatureUpdate.Invoke(creature, null);
+            if (done()) return (i + 1) * Time.deltaTime;
+        }
+        return -1f;
     }
 
     // ------------------------------------------------------------------ combat

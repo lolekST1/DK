@@ -78,13 +78,18 @@ namespace DK
                         AngerPerMissedWage = 0.34f,
                         CalmPerSecond = 1f / 30f,
 
-                        // One beetle loses to a knight and two win, so defending the dungeon is
-                        // about how many creatures you can house and pay, not about one hero
-                        // being a formality.
-                        Health = 60,
-                        Damage = 6,
+                        // Balanced for the worst case, which is also the normal one: creatures
+                        // arrive from their lairs one at a time, so a raid is a run of duels
+                        // rather than a brawl. One beetle loses to a knight and leaves it on
+                        // about a third health, so the second one finishes it. Fighting
+                        // together is strictly better than that, never worse.
+                        Health = 70,
+                        Damage = 8,
                         AttackInterval = 1.0f,
-                        AlertRange = 8,
+
+                        // Wide enough that creatures sharing a lair block tend to notice the
+                        // same hero, which is what turns those duels into a brawl.
+                        AlertRange = 12,
 
                         Skin = new Color(0.30f, 0.52f, 0.34f),
                     };

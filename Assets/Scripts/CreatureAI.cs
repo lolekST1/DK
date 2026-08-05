@@ -349,8 +349,13 @@ namespace DK
             // Already next to it: no route needed, just start swinging.
             if (!Battlefield.InReach(this, enemy) && !_walker.SetPath(enemy.Cell)) return false;
 
+            // Only a new fight restarts the swing clock. Engage is also called from
+            // TakeDamage, and resetting there let each side's hit hand the other a free swing:
+            // the two fed each other every frame, so a duel meant to take seconds was decided
+            // in about a tenth of one and looked like creatures vanishing on contact.
+            if (State != CreatureState.Fighting || !ReferenceEquals(_enemy, enemy)) _swingTimer = 0f;
+
             _enemy = enemy;
-            _swingTimer = 0f;
             State = CreatureState.Fighting;
             return true;
         }

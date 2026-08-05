@@ -315,8 +315,11 @@ namespace DK
             if (enemy == null || !enemy.IsAlive) return false;
             if (!Battlefield.InReach(this, enemy) && !_walker.SetPath(enemy.Cell)) return false;
 
+            // See CreatureAI.Engage: only a new fight restarts the swing clock, or being hit
+            // buys a free attack and both sides swing every frame.
+            if (State != HeroState.Fighting || !ReferenceEquals(_enemy, enemy)) _swingTimer = 0f;
+
             _enemy = enemy;
-            _swingTimer = 0f;
             State = HeroState.Fighting;
             return true;
         }
