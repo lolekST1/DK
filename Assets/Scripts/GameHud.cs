@@ -244,16 +244,26 @@ namespace DK
             if (_tools != null && _tools.CurrentTool != PlayerTool.Dig && _tools.HoverRefusal != null)
                 return "Cannot place here: " + _tools.HoverRefusal;
 
-            int carried = CarriedGold();
-            if (carried > 0 && _rooms != null && _rooms.FreeCapacity == 0)
-                return "Vaults are full — imps are standing around holding " + carried +
-                       " gold. Build a treasury [2].";
-
             // Creatures walking out is the most expensive thing that can be going wrong.
             if (_creatures != null && _creatures.CreatureCount > 0 &&
                 _resources != null && _resources.Gold < WageBill())
                 return "Cannot make payroll — " + WageBill() + " gold due, " + _resources.Gold +
                        " in the vault. Creatures leave after three missed paydays.";
+
+            // A full vault does not stall anything any more, it just quietly wastes every seam
+            // the imps break, so nothing on screen would say so unless this does. It reads off
+            // capacity rather than off imps holding gold: since mined gold is dropped at the
+            // seam rather than carried, nobody stands around holding anything to notice.
+            if (_rooms != null && _rooms.StorageCapacity > 0 && _rooms.FreeCapacity == 0)
+                return _resources != null && _resources.LooseGold > 0
+                    ? "Vaults are full — " + _resources.LooseGold +
+                      " mined gold is piling up on the floor. Build a treasury [2]."
+                    : "Vaults are full. Everything the imps mine from now on stays on the floor. " +
+                      "Build a treasury [2].";
+
+            if (_resources != null && _resources.LooseGold > 0)
+                return _resources.LooseGold + " gold is lying on the floor. Imps collect it once " +
+                       "they run out of rock to dig.";
 
             if (_creatures != null && _creatures.ArrivalBlocker != null &&
                 _rooms != null && _rooms.HasPortal)
@@ -261,13 +271,6 @@ namespace DK
 
             if (_rooms != null && _rooms.LairCount == 0)
                 return "No lair yet. Imps with a lair dig faster [3].";
-
-            if (_resources != null && _resources.LooseGold > 0)
-                return _resources.LooseGold + " gold is lying on the floor. Imps fetch it once " +
-                       "there is vault space [2].";
-
-            if (_resources != null && _resources.TotalSpilled > 0)
-                return "Dropped " + _resources.TotalSpilled + " gold on the floor over the run.";
 
             return string.Empty;
         }

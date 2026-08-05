@@ -36,7 +36,8 @@ when the vault cannot cover the next tile.
 | Scroll wheel | Zoom |
 
 The cursor turns green where the selected room will go and red where it will not; the HUD
-status line says why.
+status line says why. It shows one thing at a time, the most urgent first: payroll it cannot
+meet, then a full vault, then gold waiting on the floor, then what the portal is waiting for.
 
 ### The loop
 
