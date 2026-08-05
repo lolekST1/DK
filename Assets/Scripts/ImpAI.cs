@@ -8,13 +8,18 @@ namespace DK
         Idle,
         MoveToTarget,
         Digging,
+        HaulGold,
         ReturnToBase,
     }
 
     /// <summary>
     /// A worker creature: picks the nearest reachable queued tile, walks to a tile adjacent
-    /// to it, digs for a fixed time, then looks for more work or heads back to its home tile.
+    /// to it, digs for a fixed time, hauls anything it mined to a vault, then looks for more
+    /// work or heads back to its lair.
+    ///
     /// Several imps share one grid, so each claims its target and never poaches another's.
+    /// Gold is carried, not credited on the spot — an imp with a full load and no vault to
+    /// put it in waits at home, which is what makes building a treasury urgent.
     /// </summary>
     public class ImpAI : MonoBehaviour
     {
@@ -22,24 +27,46 @@ namespace DK
         public float TurnSpeed = 12f;
         public float DigDuration = 1.2f;
 
+        /// <summary>Dig time multiplier for an imp that owns a lair. Sleeping somewhere pays off.</summary>
+        public const float RestedDigMultiplier = 0.7f;
+
+        /// <summary>
+        /// How long an imp will hold gold it cannot bank before dumping it and going back to
+        /// work. Without this a full vault quietly freezes the whole crew, which reads as a
+        /// bug; losing the gold instead is a cost the player can see and fix.
+        /// </summary>
+        public float HaulPatience = 8f;
+
         public ImpState State { get; private set; } = ImpState.Idle;
 
-        /// <summary>Tile this imp idles on, so a crowd of imps does not stack up on one spot.</summary>
-        public Vector2Int HomeCell { get; private set; }
+        /// <summary>Gold mined and not yet banked.</summary>
+        public int CarriedGold { get; private set; }
 
         public bool HasDigTarget { get; private set; }
         public Vector2Int DigTarget => _digTarget;
 
+        /// <summary>Lair tile if this imp owns one, otherwise the spot near the heart it was given.</summary>
+        public Vector2Int HomeCell => _rooms != null ? _rooms.HomeFor(this) : _fallbackHome;
+
+        public bool IsRested => _rooms != null && _rooms.HasLair(this);
+
         GridManager _grid;
         ResourceManager _resources;
+        RoomManager _rooms;
         Transform _body;
+        Transform _carryIcon;
 
         readonly List<Vector2Int> _path = new List<Vector2Int>();
         readonly List<Vector2Int> _candidatePath = new List<Vector2Int>();
         readonly List<Vector2Int> _queuedScratch = new List<Vector2Int>();
+        readonly List<Vector2Int> _depositScratch = new List<Vector2Int>();
 
         int _pathIndex;
         Vector2Int _digTarget;
+        Vector2Int _haulTarget;
+        Vector2Int _fallbackHome;
+        bool _haulHasTarget;
+        float _haulWaitTimer;
         float _digTimer;
         float _repathCooldown;
         float _bobPhase;
@@ -53,20 +80,33 @@ namespace DK
             new Vector2Int(0, -1),
         };
 
-        public void Configure(GridManager grid, ResourceManager resources, Transform body, Vector2Int homeCell)
+        public void Configure(GridManager grid, ResourceManager resources, RoomManager rooms,
+                              Transform body, Transform carryIcon, Vector2Int fallbackHome)
         {
             _grid = grid;
             _resources = resources;
+            _rooms = rooms;
             _body = body;
+            _carryIcon = carryIcon;
             if (_body != null) _bodyBaseY = _body.localPosition.y;
 
-            HomeCell = grid.IsWalkable(homeCell) ? homeCell : grid.BaseCell;
-            transform.position = grid.CellToWorld(HomeCell);
+            _fallbackHome = grid.IsWalkable(fallbackHome) ? fallbackHome : grid.BaseCell;
+            if (_rooms != null) _rooms.RegisterWorker(this, _fallbackHome);
+
+            transform.position = grid.CellToWorld(_fallbackHome);
+            UpdateCarryIcon();
         }
 
-        void OnDestroy() => ReleaseTarget();
+        void OnDestroy()
+        {
+            ReleaseTarget();
+            if (_rooms != null) _rooms.UnregisterWorker(this);
+        }
 
         public Vector2Int CurrentCell => _grid.WorldToCell(transform.position);
+
+        /// <summary>Dig time for this imp right now, lair bonus included.</summary>
+        public float EffectiveDigDuration => IsRested ? DigDuration * RestedDigMultiplier : DigDuration;
 
         void Update()
         {
@@ -86,6 +126,9 @@ namespace DK
                 case ImpState.Digging:
                     TickDigging(dt);
                     break;
+                case ImpState.HaulGold:
+                    TickHaulGold(dt);
+                    break;
                 case ImpState.ReturnToBase:
                     TickReturnToBase(dt);
                     break;
@@ -101,6 +144,18 @@ namespace DK
             if (_repathCooldown > 0f) return;
             _repathCooldown = 0.2f;
 
+            // Read home first: this lookup is what moves an imp into a lair the player just
+            // built, and going idle between tiles is the only moment it is cheap to do.
+            var home = HomeCell;
+
+            if (CarriedGold > 0)
+            {
+                _haulHasTarget = false;
+                _repathCooldown = 0f;
+                State = ImpState.HaulGold;
+                return;
+            }
+
             if (TrySelectDigTarget())
             {
                 State = ImpState.MoveToTarget;
@@ -108,8 +163,7 @@ namespace DK
             }
 
             // Nothing left to claim: idle at home, walking back if we wandered off.
-            if (CurrentCell != HomeCell &&
-                Pathfinder.TryFindPath(_grid, CurrentCell, HomeCell, _path))
+            if (CurrentCell != home && Pathfinder.TryFindPath(_grid, CurrentCell, home, _path))
             {
                 _pathIndex = 0;
                 State = ImpState.ReturnToBase;
@@ -145,14 +199,85 @@ namespace DK
             FaceTowards(_grid.CellToWorld(_digTarget), dt);
 
             _digTimer += dt;
-            if (_digTimer < DigDuration) return;
+            if (_digTimer < EffectiveDigDuration) return;
 
             int gold = _grid.DigOut(_digTarget.x, _digTarget.y);
-            if (gold > 0 && _resources != null) _resources.AddGold(gold);
 
             ReleaseTarget();
             _repathCooldown = 0f;
+
+            if (gold > 0)
+            {
+                CarriedGold += gold;
+                UpdateCarryIcon();
+                _haulHasTarget = false;
+                _haulWaitTimer = 0f;
+                State = ImpState.HaulGold;
+                return;
+            }
+
             State = ImpState.Idle;
+        }
+
+        void TickHaulGold(float dt)
+        {
+            if (CarriedGold <= 0)
+            {
+                _haulHasTarget = false;
+                State = ImpState.Idle;
+                return;
+            }
+
+            if (_haulHasTarget)
+            {
+                if (FollowPath(dt)) return;
+
+                // Arrived. Whatever does not fit stays on our back — another imp may have
+                // topped the tile up while we were walking.
+                int banked = _resources != null ? _resources.Bank(_haulTarget, CarriedGold) : 0;
+                CarriedGold -= banked;
+                UpdateCarryIcon();
+
+                _haulHasTarget = false;
+                _repathCooldown = banked > 0 ? 0f : 0.5f;
+                if (banked > 0) _haulWaitTimer = 0f;
+
+                if (CarriedGold <= 0) State = ImpState.Idle;
+                return;
+            }
+
+            // Nowhere to bank. Give it a while, then dump the load and get back to work —
+            // an imp frozen forever holding gold reads as a broken imp, not as a full vault.
+            _haulWaitTimer += dt;
+            if (_haulWaitTimer >= HaulPatience)
+            {
+                if (_resources != null) _resources.ReportSpill(CarriedGold);
+                CarriedGold = 0;
+                UpdateCarryIcon();
+
+                _haulWaitTimer = 0f;
+                _repathCooldown = 0f;
+                State = ImpState.Idle;
+                return;
+            }
+
+            // Drift home while waiting: standing in the corridor the other imps are using
+            // would look like a bug even though it is only a full vault.
+            if (FollowPath(dt)) return;
+
+            if (_repathCooldown > 0f) return;
+            _repathCooldown = 0.5f;
+
+            if (TrySelectHaulTarget())
+            {
+                _haulHasTarget = true;
+                _haulWaitTimer = 0f;
+                return;
+            }
+
+            var home = HomeCell;
+            if (CurrentCell != home) Pathfinder.TryFindPath(_grid, CurrentCell, home, _path);
+            _pathIndex = 0;
         }
 
         void TickReturnToBase(float dt)
@@ -211,6 +336,29 @@ namespace DK
             return false;
         }
 
+        /// <summary>Nearest storage tile with space that we can actually walk to.</summary>
+        bool TrySelectHaulTarget()
+        {
+            if (_rooms == null) return false;
+
+            var from = CurrentCell;
+            _rooms.CollectDepositCells(from, _depositScratch);
+
+            foreach (var cell in _depositScratch)
+            {
+                if (!_grid.IsWalkable(cell)) continue;
+                if (!Pathfinder.TryFindPath(_grid, from, cell, _candidatePath)) continue;
+
+                _path.Clear();
+                _path.AddRange(_candidatePath);
+                _pathIndex = 0;
+                _haulTarget = cell;
+                return true;
+            }
+
+            return false;
+        }
+
         void ReleaseTarget()
         {
             if (!HasDigTarget) return;
@@ -259,6 +407,11 @@ namespace DK
             transform.rotation = Quaternion.Slerp(transform.rotation, wanted, 1f - Mathf.Exp(-TurnSpeed * dt));
         }
 
+        void UpdateCarryIcon()
+        {
+            if (_carryIcon != null) _carryIcon.gameObject.SetActive(CarriedGold > 0);
+        }
+
         void AnimateBody(float dt)
         {
             if (_body == null) return;
@@ -266,7 +419,9 @@ namespace DK
             // Cheap readability cue: bob fast while digging, gently while walking.
             float amplitude = State == ImpState.Digging ? 0.14f : 0.05f;
             float frequency = State == ImpState.Digging ? 14f : 6f;
-            bool moving = State == ImpState.MoveToTarget || State == ImpState.ReturnToBase;
+            bool moving = State == ImpState.MoveToTarget ||
+                          State == ImpState.ReturnToBase ||
+                          State == ImpState.HaulGold;
 
             if (State == ImpState.Digging || moving) _bobPhase += dt * frequency;
             else _bobPhase = Mathf.MoveTowards(_bobPhase, 0f, dt * 4f);

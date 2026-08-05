@@ -78,6 +78,8 @@ namespace UnityEngine
         public static float Exp(float v) => (float)Math.Exp(v);
         public static int Max(int a, int b) => Math.Max(a, b);
         public static float Max(float a, float b) => Math.Max(a, b);
+        public static int Min(int a, int b) => Math.Min(a, b);
+        public static float Min(float a, float b) => Math.Min(a, b);
         public static int FloorToInt(float v) => (int)Math.Floor(v);
         public static float Clamp(float v, float lo, float hi) => Math.Min(hi, Math.Max(lo, v));
         public static float Lerp(float a, float b, float t) => a + (b - a) * t;
@@ -111,7 +113,7 @@ namespace UnityEngine
         public bool Raycast(Ray ray, out float distance) { distance = 0f; return true; }
     }
 
-    public enum KeyCode { Q, E }
+    public enum KeyCode { Q, E, Escape, Alpha1, Alpha2, Alpha3, Alpha4 }
 
     public enum PrimitiveType { Cube, Capsule, Sphere, Quad, Plane }
     public enum CameraClearFlags { SolidColor, Skybox }

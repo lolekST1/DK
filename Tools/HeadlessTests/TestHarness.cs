@@ -1,5 +1,6 @@
-// Headless smoke test of the dig loop: grid generation, marking, A*, imp state machine,
-// gold award. Runs against the stub mini-engine, not Unity.
+// Headless smoke test of the dungeon loop: grid generation, marking, A*, the imp state
+// machine, room building, the gold haul and lairs. Runs against the stub mini-engine,
+// not Unity.
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -12,19 +13,10 @@ public static class TestHarness
 
     public static int Main()
     {
-        var gridObject = new GameObject("Grid");
-        var grid = gridObject.AddComponent<GridManager>();
-        grid.Configure(20, 20, 1337, 0.10f, 2);
-
-        var economyObject = new GameObject("Economy");
-        var economy = economyObject.AddComponent<ResourceManager>();
-
-        var impObject = new GameObject("Imp");
-        var body = new GameObject("Body").transform;
-        var imp = impObject.AddComponent<ImpAI>();
-        imp.MoveSpeed = 3f;
-        imp.DigDuration = 1.2f;
-        imp.Configure(grid, economy, body, grid.BaseCell);
+        var world = NewWorld("Main", 1337);
+        var grid = world.Grid;
+        var economy = world.Economy;
+        var imp = AddImp(world, "Imp", grid.BaseCell);
 
         // --- generation -----------------------------------------------------
         Check(grid.BaseCell.x == 10 && grid.BaseCell.y == 10, "base cell is the grid centre");
@@ -67,7 +59,15 @@ public static class TestHarness
         Check(grid.QueuedCount == 1, "queue count tracks marked tiles");
         Check(grid.UnmarkForDigging(7, 10) && grid.QueuedCount == 0, "unmarking clears the queue");
 
+        // --- rooms ----------------------------------------------------------
+        RoomChecks();
+
         // --- the actual loop ------------------------------------------------
+        // Vault space first, or the imp has nowhere to put what it mines.
+        Check(world.Rooms.Build(8, 8, RoomType.Treasury), "treasury tile paid for and placed");
+        Check(world.Rooms.Build(8, 9, RoomType.Treasury), "second treasury tile placed");
+        int goldBeforeDigging = economy.Gold;
+
         // Dig a corridor west from the chamber, then down, ending on the nearest gold seam.
         var target = FindNearestGold(grid);
         var corridor = BuildCorridor(grid.BaseCell, target)
@@ -87,8 +87,12 @@ public static class TestHarness
         foreach (var cell in corridor)
             Check(grid.GetTileState(cell.x, cell.y) == TileState.Dug, $"tile {cell.x},{cell.y} ended up dug out");
 
-        Check(economy.Gold == goldTilesInCorridor * GridManager.GoldPerSeam,
-            $"gold counter is {economy.Gold}, expected {goldTilesInCorridor * GridManager.GoldPerSeam}");
+        int expectedGold = goldBeforeDigging + goldTilesInCorridor * GridManager.GoldPerSeam;
+        float banked = RunUntil(imp, () => imp.CarriedGold == 0 && imp.State == ImpState.Idle, 120f);
+        Check(banked > 0f, $"imp hauled its load into the vault after {banked:0.0}s");
+        Check(economy.Gold == expectedGold,
+            $"banked gold is {economy.Gold}, expected {expectedGold}");
+        Check(economy.TotalSpilled == 0, "nothing spilled while there was vault space");
 
         // --- return to base -------------------------------------------------
         float returned = RunUntil(imp, () => imp.CurrentCell == grid.BaseCell && imp.State == ImpState.Idle, 120f);
@@ -103,10 +107,209 @@ public static class TestHarness
         // --- several imps share the queue ------------------------------------
         MultiImpChecks();
 
+        // --- hauling and lairs -----------------------------------------------
+        FullVaultChecks();
+        LairChecks();
+
         Console.WriteLine(_failures == 0
             ? "\nAll checks passed."
             : $"\n{_failures} check(s) FAILED.");
         return _failures == 0 ? 0 : 1;
+    }
+
+    // ------------------------------------------------------------------ rooms
+
+    static void RoomChecks()
+    {
+        var world = NewWorld("Rooms", 99);
+        var rooms = world.Rooms;
+        var economy = world.Economy;
+
+        int heartTiles = 0;
+        for (int x = 0; x < world.Grid.Width; x++)
+        for (int z = 0; z < world.Grid.Depth; z++)
+            if (rooms.GetRoom(x, z) == RoomType.DungeonHeart) heartTiles++;
+
+        Check(heartTiles == 9, $"the dungeon heart covers a 3x3 (found {heartTiles} tiles)");
+        Check(rooms.GetRoom(world.Grid.BaseCell) == RoomType.DungeonHeart, "the heart sits on the base cell");
+        Check(rooms.StorageCapacity == 9 * RoomCatalog.CapacityOf(RoomType.DungeonHeart),
+            $"heart capacity is {rooms.StorageCapacity}");
+        Check(rooms.StoredGold == RoomManager.StartingGold,
+            $"the dungeon starts with {rooms.StoredGold} gold banked");
+        Check(economy.Gold == rooms.StoredGold, "the economy reads gold straight off the rooms");
+
+        // Placement rules.
+        Check(!rooms.CanBuild(0, 0, RoomType.Treasury, out var offMap), $"cannot build on solid rock ({offMap})");
+        Check(!rooms.CanBuild(world.Grid.BaseCell.x, world.Grid.BaseCell.y, RoomType.Treasury, out var taken),
+            $"cannot build on top of the heart ({taken})");
+        Check(!rooms.CanBuild(8, 8, RoomType.DungeonHeart, out _), "the heart is not player-buildable");
+        Check(rooms.CanBuild(8, 8, RoomType.Treasury, out _), "a bare chamber tile accepts a treasury");
+
+        // Building charges, and capacity grows.
+        int before = rooms.StoredGold;
+        Check(rooms.Build(8, 8, RoomType.Treasury), "treasury built");
+        Check(rooms.StoredGold == before - RoomCatalog.CostOf(RoomType.Treasury),
+            $"building charged {RoomCatalog.CostOf(RoomType.Treasury)} gold");
+        Check(rooms.StorageCapacity == 225 + RoomCatalog.CapacityOf(RoomType.Treasury),
+            "the treasury tile added its capacity");
+        Check(!rooms.CanBuild(8, 8, RoomType.Treasury, out _), "a tile already holding a room refuses another");
+
+        // Broke.
+        Check(!rooms.Build(8, 9, RoomType.Lair), "cannot afford a lair on 50 gold");
+        Check(rooms.GetRoom(8, 9) == RoomType.None, "the refused lair left no tile behind");
+
+        // Treasuries drain before the heart.
+        var vault = new Vector2Int(8, 8);
+        rooms.Deposit(vault, 200);
+        int heartBefore = rooms.StoredGold - rooms.GetStoredGold(vault.x, vault.y);
+        Check(rooms.TryWithdraw(150), "withdrawing 150 succeeds");
+        Check(rooms.GetStoredGold(vault.x, vault.y) == 50, "the treasury paid first");
+        Check(rooms.StoredGold - rooms.GetStoredGold(vault.x, vault.y) == heartBefore,
+            "the heart reserve was left alone");
+        Check(!rooms.TryWithdraw(100000), "an unaffordable withdrawal changes nothing");
+
+        // Deposits respect the per-tile ceiling.
+        var full = new GameObject("FillRooms").AddComponent<RoomManager>();
+        var fullGrid = new GameObject("FillGrid").AddComponent<GridManager>();
+        fullGrid.Configure(20, 20, 7, 0.10f, 2);
+        full.Configure(fullGrid);
+        Check(full.DepositAnywhere(100000) == full.StorageCapacity - RoomManager.StartingGold,
+            "depositing past capacity banks only what fits");
+        Check(full.FreeCapacity == 0, "the heart reports itself full");
+        Check(full.Deposit(fullGrid.BaseCell, 50) == 0, "a full tile accepts nothing");
+
+        // Selling refunds half and rescues the gold that was stored on the tile.
+        int stored = rooms.GetStoredGold(vault.x, vault.y);
+        int totalBefore = rooms.StoredGold;
+        Check(rooms.Sell(vault.x, vault.y, out int lost), "a treasury tile can be sold");
+        Check(rooms.GetRoom(vault.x, vault.y) == RoomType.None, "the sold tile is bare floor again");
+        Check(rooms.StoredGold + lost == totalBefore + RoomCatalog.RefundOf(RoomType.Treasury),
+            $"sale returned the stored {stored} plus half the build cost, minus {lost} that did not fit");
+        Check(!rooms.Sell(world.Grid.BaseCell.x, world.Grid.BaseCell.y, out _), "the dungeon heart cannot be sold");
+    }
+
+    // ------------------------------------------------------------------ hauling
+
+    /// <summary>An imp that cannot bank its load must not freeze the crew.</summary>
+    static void FullVaultChecks()
+    {
+        var world = NewWorld("Full", 1337);
+        var imp = AddImp(world, "FullImp", world.Grid.BaseCell);
+
+        world.Rooms.DepositAnywhere(100000);
+        Check(world.Rooms.FreeCapacity == 0, "vault filled to the brim for the test");
+
+        var corridor = BuildCorridor(world.Grid.BaseCell, FindNearestGold(world.Grid))
+            .FindAll(cell => world.Grid.IsDiggable(cell.x, cell.y));
+        foreach (var cell in corridor) world.Grid.MarkForDigging(cell.x, cell.y);
+
+        float cleared = RunUntil(imp, () => world.Grid.QueuedCount == 0, 400f);
+        Check(cleared > 0f, $"a full vault does not stop the digging ({cleared:0.0}s)");
+
+        float dumped = RunUntil(imp, () => imp.CarriedGold == 0, 60f);
+        Check(dumped > 0f, $"the imp dumped the load it could not bank after {dumped:0.0}s");
+        Check(world.Economy.TotalSpilled >= GridManager.GoldPerSeam,
+            $"the spill was recorded ({world.Economy.TotalSpilled} gold)");
+
+        // Give the imp somewhere to put gold and the next seam banks normally again.
+        Check(world.Rooms.Build(8, 8, RoomType.Treasury), "treasury built out of the full heart");
+
+        var seam = FindDiggableGoldNextToFloor(world.Grid);
+        Check(seam.x >= 0, "the opened corridor exposed another gold seam to mine");
+
+        int spilledBefore = world.Economy.TotalSpilled;
+        int bankedBefore = world.Economy.Gold;
+        world.Grid.MarkForDigging(seam.x, seam.y);
+
+        float second = RunUntil(imp, () => imp.CarriedGold == 0 && world.Grid.QueuedCount == 0, 200f);
+        Check(second > 0f, $"the second seam was mined and hauled in {second:0.0}s");
+        Check(world.Economy.Gold == bankedBefore + GridManager.GoldPerSeam,
+            $"it banked into the new treasury (gold {world.Economy.Gold}, was {bankedBefore})");
+        Check(world.Economy.TotalSpilled == spilledBefore, "nothing spilled once there was room again");
+    }
+
+    /// <summary>A gold seam touching already-dug floor, so an imp can actually reach it.</summary>
+    static Vector2Int FindDiggableGoldNextToFloor(GridManager grid)
+    {
+        var offsets = new[]
+        {
+            new Vector2Int(1, 0), new Vector2Int(-1, 0),
+            new Vector2Int(0, 1), new Vector2Int(0, -1),
+        };
+
+        for (int x = 0; x < grid.Width; x++)
+        for (int z = 0; z < grid.Depth; z++)
+        {
+            if (grid.GetTileState(x, z) != TileState.GoldSeam) continue;
+
+            foreach (var offset in offsets)
+                if (grid.IsWalkable(x + offset.x, z + offset.y)) return new Vector2Int(x, z);
+        }
+
+        return new Vector2Int(-1, -1);
+    }
+
+    // ------------------------------------------------------------------ lairs
+
+    static void LairChecks()
+    {
+        var world = NewWorld("Lair", 2024);
+        var rooms = world.Rooms;
+
+        var impA = AddImp(world, "LairImpA", new Vector2Int(8, 8));
+        var impB = AddImp(world, "LairImpB", new Vector2Int(8, 9));
+
+        Check(!impA.IsRested, "an imp with no lair is not rested");
+        Check(impA.HomeCell == new Vector2Int(8, 8), "with no lair the imp falls back to its given home");
+
+        rooms.DepositAnywhere(100000);
+        Check(rooms.Build(12, 8, RoomType.Lair), "first lair built");
+        Check(rooms.Build(12, 9, RoomType.Lair), "second lair built");
+
+        Step(impA, 1f);
+        Step(impB, 1f);
+
+        Check(impA.IsRested && impB.IsRested, "both imps moved into a lair");
+        Check(impA.HomeCell != impB.HomeCell, "no two imps share a lair tile");
+        Check(impA.EffectiveDigDuration < impA.DigDuration, "a rested imp digs faster");
+
+        // Selling a lair evicts exactly the imp that lived there.
+        var evicted = impA.HomeCell;
+        Check(rooms.Sell(evicted.x, evicted.y, out _), "a lair tile can be sold");
+        Check(!impA.IsRested, "the imp lost its lair when the tile was sold");
+        Check(impB.IsRested, "the other imp kept its own lair");
+        Check(impA.HomeCell == new Vector2Int(8, 8), "the evicted imp fell back to its old home");
+
+        // Rested imps really are quicker over the same queue.
+        float rested = TimeToClearRock(seed: 3131, withLair: true);
+        float weary = TimeToClearRock(seed: 3131, withLair: false);
+        Check(rested > 0f && weary > 0f, $"both crews finished (rested {rested:0.0}s, weary {weary:0.0}s)");
+        Check(rested < weary, "the imp with a lair cleared the same rock sooner");
+    }
+
+    /// <summary>Clears an identical run of plain rock, with and without a lair to sleep in.</summary>
+    static float TimeToClearRock(int seed, bool withLair)
+    {
+        var world = NewWorld(withLair ? "Rested" : "Weary", seed);
+        var imp = AddImp(world, "SpeedImp", world.Grid.BaseCell);
+
+        if (withLair)
+        {
+            world.Rooms.DepositAnywhere(100000);
+            world.Rooms.Build(8, 8, RoomType.Lair);
+        }
+
+        // Plain rock only, so hauling never enters the measurement.
+        int marked = 0;
+        for (int z = 8; z <= 12 && marked < 5; z++)
+        {
+            if (world.Grid.GetTileState(7, z) != TileState.Rock) continue;
+            if (!world.Grid.MarkForDigging(7, z)) continue;
+            marked++;
+        }
+
+        if (marked == 0) return -1f;
+        return RunUntil(imp, () => world.Grid.QueuedCount == 0, 400f);
     }
 
     // ------------------------------------------------------------------ multi-imp
@@ -123,7 +326,7 @@ public static class TestHarness
 
         int expectedGold = 0;
         foreach (var cell in crew.Marked)
-            if (crew.Grid.GetTileState(cell.x, cell.y) == TileState.GoldSeam) expectedGold++;
+            if (crew.World.Grid.GetTileState(cell.x, cell.y) == TileState.GoldSeam) expectedGold++;
         expectedGold *= GridManager.GoldPerSeam;
 
         float crewTime = RunCrewUntilIdle(crew, out bool everShared);
@@ -135,17 +338,18 @@ public static class TestHarness
         Check(crewTime < singleTime, "three imps beat one imp on the same queue");
 
         foreach (var cell in crew.Marked)
-            Check(crew.Grid.GetTileState(cell.x, cell.y) == TileState.Dug,
+            Check(crew.World.Grid.GetTileState(cell.x, cell.y) == TileState.Dug,
                 $"crew dug out tile {cell.x},{cell.y}");
 
-        Check(crew.Economy.Gold == expectedGold,
-            $"crew gold is {crew.Economy.Gold}, expected {expectedGold}");
+        int startingGold = RoomManager.StartingGold - RoomCatalog.CostOf(RoomType.Treasury);
+        StepCrew(crew, 60f);
+        Check(crew.World.Economy.Gold == startingGold + expectedGold,
+            $"crew banked {crew.World.Economy.Gold}, expected {startingGold + expectedGold}");
     }
 
     class Crew
     {
-        public GridManager Grid;
-        public ResourceManager Economy;
+        public World World;
         public List<ImpAI> Imps = new List<ImpAI>();
         public List<Vector2Int> Marked = new List<Vector2Int>();
     }
@@ -153,34 +357,28 @@ public static class TestHarness
     /// <summary>Identical world every time: same seed, same marks, only the head count differs.</summary>
     static Crew BuildCrew(int impCount)
     {
-        var crew = new Crew();
-        crew.Grid = new GameObject("CrewGrid").AddComponent<GridManager>();
-        crew.Grid.Configure(20, 20, 4242, 0.10f, 2);
-        crew.Economy = new GameObject("CrewEconomy").AddComponent<ResourceManager>();
+        var crew = new Crew { World = NewWorld("Crew" + impCount, 4242) };
+
+        // Somewhere to bank what the crew mines, so the run measures digging and not spilling.
+        crew.World.Rooms.Build(8, 8, RoomType.Treasury);
 
         // Two clusters on opposite sides of the chamber, every tile touching a walkable one.
         foreach (int x in new[] { 7, 13 })
         for (int z = 8; z <= 12; z++)
         {
-            if (!crew.Grid.MarkForDigging(x, z)) continue;
+            if (!crew.World.Grid.MarkForDigging(x, z)) continue;
             crew.Marked.Add(new Vector2Int(x, z));
         }
 
         var homes = new[]
         {
-            crew.Grid.BaseCell,
-            new Vector2Int(crew.Grid.BaseCell.x - 1, crew.Grid.BaseCell.y),
-            new Vector2Int(crew.Grid.BaseCell.x + 1, crew.Grid.BaseCell.y),
+            crew.World.Grid.BaseCell,
+            new Vector2Int(crew.World.Grid.BaseCell.x - 1, crew.World.Grid.BaseCell.y),
+            new Vector2Int(crew.World.Grid.BaseCell.x + 1, crew.World.Grid.BaseCell.y),
         };
 
         for (int i = 0; i < impCount; i++)
-        {
-            var imp = new GameObject($"CrewImp{i}").AddComponent<ImpAI>();
-            imp.MoveSpeed = 3f;
-            imp.DigDuration = 1.2f;
-            imp.Configure(crew.Grid, crew.Economy, new GameObject($"CrewBody{i}").transform, homes[i % homes.Length]);
-            crew.Imps.Add(imp);
-        }
+            crew.Imps.Add(AddImp(crew.World, $"CrewImp{i}", homes[i % homes.Length]));
 
         return crew;
     }
@@ -201,10 +399,52 @@ public static class TestHarness
                 if (crew.Imps[a].DigTarget == crew.Imps[b].DigTarget) everShared = true;
             }
 
-            if (crew.Grid.QueuedCount == 0) return (i + 1) * Time.deltaTime;
+            if (crew.World.Grid.QueuedCount == 0) return (i + 1) * Time.deltaTime;
         }
 
         return -1f;
+    }
+
+    static void StepCrew(Crew crew, float seconds)
+    {
+        int steps = (int)(seconds / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+            foreach (var imp in crew.Imps) ImpUpdate.Invoke(imp, null);
+    }
+
+    // ------------------------------------------------------------------ world building
+
+    class World
+    {
+        public GridManager Grid;
+        public RoomManager Rooms;
+        public ResourceManager Economy;
+    }
+
+    static World NewWorld(string name, int seed)
+    {
+        var world = new World();
+
+        world.Grid = new GameObject(name + "Grid").AddComponent<GridManager>();
+        world.Grid.Configure(20, 20, seed, 0.10f, 2);
+
+        world.Rooms = new GameObject(name + "Rooms").AddComponent<RoomManager>();
+        world.Rooms.Configure(world.Grid);
+
+        world.Economy = new GameObject(name + "Economy").AddComponent<ResourceManager>();
+        world.Economy.Configure(world.Rooms);
+
+        return world;
+    }
+
+    static ImpAI AddImp(World world, string name, Vector2Int home)
+    {
+        var imp = new GameObject(name).AddComponent<ImpAI>();
+        imp.MoveSpeed = 3f;
+        imp.DigDuration = 1.2f;
+        imp.Configure(world.Grid, world.Economy, world.Rooms,
+            new GameObject(name + "Body").transform, new GameObject(name + "Nugget").transform, home);
+        return imp;
     }
 
     // ------------------------------------------------------------------ helpers

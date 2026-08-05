@@ -24,22 +24,26 @@ namespace DK
         public float ImpDigDuration = 1.2f;
 
         public GridManager Grid { get; private set; }
+        public RoomManager Rooms { get; private set; }
         public ResourceManager Economy { get; private set; }
         public IReadOnlyList<ImpAI> Imps { get; private set; }
         public CameraRig Rig { get; private set; }
+        public PlayerTools Tools { get; private set; }
 
         void Awake()
         {
-            Economy = CreateResourceManager();
+            // Terrain, then the rooms sitting on it, then the economy that reads those rooms.
             Grid = CreateGrid();
+            Rooms = CreateRooms();
+            Economy = CreateResourceManager();
 
-            // Lighting first: the rig keeps the sun in step with its own yaw.
+            // Lighting before the rig: the rig keeps the sun in step with its own yaw.
             var sun = CreateLighting();
             var camera = CreateCamera();
             Rig = CreateCameraRig(camera, sun);
 
             Imps = CreateImps();
-            CreateTileDigger(camera);
+            Tools = CreatePlayerTools(camera);
             CreateHud();
         }
 
@@ -47,7 +51,20 @@ namespace DK
         {
             var go = new GameObject("ResourceManager");
             go.transform.SetParent(transform, false);
-            return go.AddComponent<ResourceManager>();
+
+            var economy = go.AddComponent<ResourceManager>();
+            economy.Configure(Rooms);
+            return economy;
+        }
+
+        RoomManager CreateRooms()
+        {
+            var go = new GameObject("Rooms");
+            go.transform.SetParent(transform, false);
+
+            var rooms = go.AddComponent<RoomManager>();
+            rooms.Configure(Grid);
+            return rooms;
         }
 
         GridManager CreateGrid()
@@ -118,7 +135,8 @@ namespace DK
 
         /// <summary>
         /// Distinct walkable tiles nearest the base, so idle imps stand side by side instead
-        /// of piling onto one spot.
+        /// of piling onto one spot. These are only fallbacks — once the player builds a lair
+        /// the imps move in and <see cref="RoomManager.HomeFor"/> takes over.
         /// </summary>
         List<Vector2Int> PickHomeCells(int count)
         {
@@ -129,6 +147,8 @@ namespace DK
             for (int z = 0; z < Grid.Depth; z++)
             {
                 if (!Grid.IsWalkable(x, z)) continue;
+                // Keep the middle of the heart clear so imps do not stand inside the core.
+                if (x == baseCell.x && z == baseCell.y) continue;
                 candidates.Add(new Vector2Int(x, z));
             }
 
@@ -170,25 +190,39 @@ namespace DK
             snout.GetComponent<Renderer>().sharedMaterial =
                 MaterialLibrary.CreateLit("DK_ImpSnout", new Color(0.95f, 0.78f, 0.55f));
 
+            // Shown only while the imp is hauling, so a glance tells you who is carrying.
+            var nugget = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            nugget.name = "Nugget";
+            Destroy(nugget.GetComponent<Collider>());
+            nugget.transform.SetParent(root.transform, false);
+            nugget.transform.localScale = new Vector3(0.26f, 0.20f, 0.26f);
+            nugget.transform.localPosition = new Vector3(0f, 0.78f, 0f);
+            nugget.GetComponent<Renderer>().sharedMaterial =
+                MaterialLibrary.CreateLit("DK_ImpNugget", new Color(0.95f, 0.78f, 0.20f), 0.55f, 0.75f);
+            nugget.SetActive(false);
+
             var imp = root.AddComponent<ImpAI>();
             imp.MoveSpeed = ImpMoveSpeed;
             imp.DigDuration = ImpDigDuration;
-            imp.Configure(Grid, Economy, body.transform, homeCell);
+            imp.Configure(Grid, Economy, Rooms, body.transform, nugget.transform, homeCell);
             return imp;
         }
 
-        void CreateTileDigger(Camera camera)
+        PlayerTools CreatePlayerTools(Camera camera)
         {
-            var go = new GameObject("TileDigger");
+            var go = new GameObject("PlayerTools");
             go.transform.SetParent(transform, false);
-            go.AddComponent<TileDigger>().Configure(Grid, camera);
+
+            var tools = go.AddComponent<PlayerTools>();
+            tools.Configure(Grid, Rooms, Economy, camera);
+            return tools;
         }
 
         void CreateHud()
         {
             var go = new GameObject("HUD");
             go.transform.SetParent(transform, false);
-            go.AddComponent<GoldHud>().Configure(Economy);
+            go.AddComponent<GameHud>().Configure(Economy, Rooms, Tools, Imps);
         }
     }
 }
