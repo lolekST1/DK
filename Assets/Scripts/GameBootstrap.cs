@@ -85,7 +85,10 @@ namespace DK
         {
             var go = new GameObject("Sun", typeof(Light));
             go.transform.SetParent(transform, false);
-            go.transform.rotation = Quaternion.Euler(48f, 140f, 0f);
+            // Light from the south, because the fixed camera looks north and therefore only
+            // ever sees south-facing block sides. A northern sun lit the faces nobody can see
+            // and threw wall shadows into the pits that everybody can.
+            go.transform.rotation = Quaternion.Euler(50f, 30f, 0f);
 
             var light = go.GetComponent<Light>();
             light.type = LightType.Directional;
