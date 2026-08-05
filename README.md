@@ -282,6 +282,10 @@ sudo apt-get install -y mono-mcs   # once
 ./Tools/HeadlessTests/run.sh
 ```
 
+Every run is meant to be identical: the simulation takes its randomness from the map seed and
+from spawn order, never from object hash codes, so a timing assertion is a measurement rather
+than a coin toss.
+
 It type-checks every script against stub Unity types, then runs the real `GridManager`,
 `RoomManager`, `Pathfinder` and `ImpAI` through the whole loop:
 

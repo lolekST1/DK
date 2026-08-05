@@ -74,6 +74,8 @@ namespace DK
         float _chaseRepath;
         int _wanderSeed;
 
+        static int _spawnOrder;
+
         static readonly Color CalmTint = new Color(1f, 1f, 1f);
         static readonly Color FuriousTint = new Color(1.6f, 0.55f, 0.45f);
 
@@ -104,7 +106,11 @@ namespace DK
             Health = _stats.Health;
             if (_battlefield != null) _battlefield.Register(this);
 
-            _wanderSeed = GetHashCode();
+            // Derived from the spawn, not from GetHashCode. Object hash codes are not
+            // guaranteed to repeat between runs, and the headless suite leans on the whole
+            // simulation being reproducible — a wander that differs run to run turns a timing
+            // assertion into a coin toss.
+            _wanderSeed = 9781 + (++_spawnOrder) * 6151 + spawnCell.x * 8191 + spawnCell.y * 131071;
             transform.position = grid.CellToWorld(_fallbackHome);
             ApplyMoodTint();
         }
