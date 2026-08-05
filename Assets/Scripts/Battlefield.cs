@@ -20,6 +20,14 @@ namespace DK
         Vector2Int Cell { get; }
         Vector3 Position { get; }
         bool IsAlive { get; }
+
+        /// <summary>
+        /// True for things that stand still and never swing back, like the dungeon heart.
+        /// Enemy searches skip them by default: a knight is here for the gold and should not
+        /// stop to hack at the masonry, and a creature has nothing to find in one at all.
+        /// </summary>
+        bool IsStructure { get; }
+
         void TakeDamage(int amount, ICombatant from);
     }
 
@@ -51,11 +59,16 @@ namespace DK
             return count;
         }
 
+        public bool TryFindNearestEnemy(ICombatant self, int range, out ICombatant enemy) =>
+            TryFindNearestEnemy(self, range, false, out enemy);
+
         /// <summary>
         /// Nearest living enemy within range, by manhattan distance on the grid. Range is in
-        /// tiles; pass <see cref="int.MaxValue"/> for "anywhere in the dungeon".
+        /// tiles; pass <see cref="int.MaxValue"/> for "anywhere in the dungeon". Structures
+        /// only turn up when asked for, so only what came to besiege one goes looking.
         /// </summary>
-        public bool TryFindNearestEnemy(ICombatant self, int range, out ICombatant enemy)
+        public bool TryFindNearestEnemy(ICombatant self, int range, bool includeStructures,
+                                        out ICombatant enemy)
         {
             enemy = null;
             int best = int.MaxValue;
@@ -66,6 +79,7 @@ namespace DK
             {
                 var candidate = _combatants[i];
                 if (candidate.Side == self.Side || !candidate.IsAlive) continue;
+                if (candidate.IsStructure && !includeStructures) continue;
 
                 var cell = candidate.Cell;
                 int distance = Mathf.Abs(cell.x - from.x) + Mathf.Abs(cell.y - from.y);

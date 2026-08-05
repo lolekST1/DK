@@ -124,10 +124,18 @@ tile claim in the same step and is easier to read as one piece.
   fight, escape). `Battlefield` + `ICombatant` keep creatures and heroes from referencing each
   other. Heroes steal rather than destroy, so there is still no game-over state.
 
-Natural next parts, roughly in dependency order: more creature and hero kinds, which both
-catalogs are already shaped for; a dungeon heart that can actually be lost, which is the point
-at which the game needs a win/lose state; then verticality, which the 3D tile array is already
-shaped for.
+- **A run you can win or lose.** `DungeonHeart` is an `ICombatant` structure with health;
+  `ICombatant.IsStructure` keeps ordinary raiders from attacking buildings. `HeroKind.Lord`
+  ignores the vault and besieges the heart, and `HeroManager` sends him after
+  `WavesBeforeLord` ordinary raids. `GameDirector` watches for either ending and stops the
+  clock.
+
+Known gap: there is no restart after the run ends — the timescale stays at zero until the
+scene is reloaded.
+
+Natural next parts, roughly in dependency order: a restart, which the endings now need; more
+creature and hero kinds, which both catalogs are already shaped for; then verticality, which
+the 3D tile array is already shaped for.
 
 ## Workflow
 Follow the usual approach: work independently, self-fix compile/runtime

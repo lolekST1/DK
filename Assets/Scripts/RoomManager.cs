@@ -74,6 +74,9 @@ namespace DK
 
         public bool HasPortal => _portalTiles.Count > 0;
 
+        /// <summary>The beating core at the middle of the heart, for whoever renders its state.</summary>
+        public Transform HeartCore => _heartCore;
+
         /// <summary>Where heroes come in. Only meaningful once <see cref="HasHeroGate"/>.</summary>
         public Vector2Int HeroGateCell { get; private set; }
 

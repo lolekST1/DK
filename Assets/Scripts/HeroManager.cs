@@ -25,6 +25,13 @@ namespace DK
 
         public int MaxHeroes = 4;
 
+        /// <summary>
+        /// How many ordinary raids come before the Lord of the Land does. The waves in between
+        /// are what the player is meant to learn on, and what pays for the creatures that meet
+        /// him.
+        /// </summary>
+        public int WavesBeforeLord = 5;
+
         public HeroKind Kind = HeroKind.Knight;
 
         GridManager _grid;
@@ -32,6 +39,7 @@ namespace DK
         ResourceManager _economy;
         LooseGold _loose;
         Battlefield _battlefield;
+        DungeonHeart _heart;
         Transform _root;
 
         readonly List<HeroAI> _heroes = new List<HeroAI>();
@@ -57,6 +65,18 @@ namespace DK
         /// <summary>Gold dropped by heroes killed on the way out, and left for the imps.</summary>
         public int GoldRecovered { get; private set; }
 
+        /// <summary>Raids sent so far, the Lord's included.</summary>
+        public int WavesSent { get; private set; }
+
+        /// <summary>True once the last wave has been sent.</summary>
+        public bool LordSent { get; private set; }
+
+        /// <summary>True once the Lord of the Land has been killed in the dungeon.</summary>
+        public bool LordDefeated { get; private set; }
+
+        /// <summary>How many ordinary raids are still to come before the Lord.</summary>
+        public int WavesUntilLord => Mathf.Max(0, WavesBeforeLord - WavesSent);
+
         /// <summary>True once a dug route joins the gate to the heart.</summary>
         public bool GateReachable { get; private set; }
 
@@ -68,13 +88,14 @@ namespace DK
         public event Action<HeroAI, bool, int> HeroGone;
 
         public void Configure(GridManager grid, RoomManager rooms, ResourceManager economy,
-                              LooseGold loose, Battlefield battlefield)
+                              LooseGold loose, Battlefield battlefield, DungeonHeart heart)
         {
             _grid = grid;
             _rooms = rooms;
             _economy = economy;
             _loose = loose;
             _battlefield = battlefield;
+            _heart = heart;
 
             _root = new GameObject("Heroes").transform;
             _root.SetParent(transform, false);
@@ -129,15 +150,24 @@ namespace DK
         /// <summary>Sends one raid through the gate. Public so tests do not have to wait.</summary>
         public void Raid()
         {
-            for (int i = 0; i < RaidSize && _heroes.Count < MaxHeroes; i++)
+            // The last wave is one Lord, on his own. He is not a bigger knight and does not
+            // need an escort — he walks past the vault and goes for the heart.
+            bool lord = !LordSent && WavesSent >= WavesBeforeLord;
+            var kind = lord ? HeroKind.Lord : Kind;
+            int count = lord ? 1 : RaidSize;
+
+            WavesSent++;
+            if (lord) LordSent = true;
+
+            for (int i = 0; i < count && _heroes.Count < MaxHeroes; i++)
             {
-                var hero = BuildHero(_spawnCounter++);
+                var hero = BuildHero(_spawnCounter++, kind);
                 _heroes.Add(hero);
                 RaidArrived?.Invoke(hero);
             }
         }
 
-        HeroAI BuildHero(int index)
+        HeroAI BuildHero(int index, HeroKind kind)
         {
             var root = new GameObject($"Hero_{index}");
             root.transform.SetParent(_root, false);
@@ -150,9 +180,18 @@ namespace DK
             body.transform.localScale = new Vector3(0.44f, 0.42f, 0.44f);
             body.transform.localPosition = new Vector3(0f, 0.42f, 0f);
 
+            var stats = HeroCatalog.Get(kind);
+
+            // The Lord stands a head above the knights, so the last wave is unmistakable.
+            if (stats.GoesForTheHeart)
+            {
+                body.transform.localScale = new Vector3(0.52f, 0.52f, 0.52f);
+                body.transform.localPosition = new Vector3(0f, 0.52f, 0f);
+            }
+
             var renderer = body.GetComponent<Renderer>();
             renderer.sharedMaterial = MaterialLibrary.CreateLit(
-                $"DK_Hero_{index}", HeroCatalog.Get(Kind).Colour, 0.4f, 0.6f);
+                $"DK_Hero_{index}", stats.Colour, 0.4f, 0.6f);
 
             var crest = GameObject.CreatePrimitive(PrimitiveType.Cube);
             crest.name = "Crest";
@@ -164,7 +203,7 @@ namespace DK
                 MaterialLibrary.CreateLit("DK_HeroCrest", new Color(0.75f, 0.20f, 0.22f));
 
             var hero = root.AddComponent<HeroAI>();
-            hero.Configure(_grid, _rooms, _economy, _loose, _battlefield, Kind,
+            hero.Configure(_grid, _rooms, _economy, _loose, _battlefield, _heart, kind,
                            body.transform, renderer, _rooms.HeroGateCell);
             return hero;
         }
@@ -191,6 +230,7 @@ namespace DK
                 {
                     Repelled++;
                     GoldRecovered += hero.DropLoot();
+                    if (hero.Kind == HeroKind.Lord) LordDefeated = true;
                 }
                 else
                 {

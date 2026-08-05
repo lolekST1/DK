@@ -52,6 +52,8 @@ namespace DK
 
         Vector3 ICombatant.Position => transform.position;
 
+        bool ICombatant.IsStructure => false;
+
         public float TurnSpeed = 12f;
 
         GridManager _grid;

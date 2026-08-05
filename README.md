@@ -4,7 +4,9 @@ A vertical slice of the core Dungeon Keeper loop: mark rock for digging, imps pa
 dig it out, then haul what they mine back to a vault you had to build and pay for. A dungeon
 heart sits at the centre, lairs give everyone somewhere to sleep, and a portal sealed in the
 rock sends creatures once you dig your way to it — creatures that expect wages every payday and
-earn them by fighting off the heroes who come for your vault.
+earn them by fighting off the heroes who come for your vault. Hold out through the raids and
+the Lord of the Land comes for the heart itself: kill him and the dungeon is yours, lose the
+heart and the run is over.
 
 ## Running it
 
@@ -83,10 +85,12 @@ Assets/Scripts/
   RoomCatalog.cs      Cost / capacity / colour per room type — the whole economy balance
   LooseGold.cs        Gold dropped on the floor: piles, per-pile claims, pickup
   RoomType.cs         None / DungeonHeart / Treasury / Lair / Portal / HeroGate
+  DungeonHeart.cs     The thing there is to lose: health, damage tint, destruction
+  GameDirector.cs     Watches for the two endings and stops the world
   Battlefield.cs      Combatant roster and "who is near enough to hit"
   HeroManager.cs      Hero gate: raid clock, roster, loot stolen and recovered
   HeroAI.cs           Advancing → Fighting → Escaping, and robbing a vault tile
-  HeroCatalog.cs      Health, damage and loot capacity per hero kind
+  HeroCatalog.cs      Health, damage, loot and intent per hero kind — knight and Lord
   CreatureManager.cs  Portal roster: arrivals, payday, departures
   CreatureAI.cs       Idle → GoingToLair → Sleeping / Wandering / Leaving
   CreatureCatalog.cs  Wage, fatigue and patience per creature — the whole creature balance
@@ -110,7 +114,12 @@ Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 
 A hero gate sits sealed in the opposite corner from the portal. Dig through to it and raids
 start after a grace period: a knight walks in, makes for the nearest vault tile with gold on
-it, takes what it can carry and heads back to the gate. Creatures leave their lairs to
+it, takes what it can carry and heads back to the gate.
+
+Survive five of those and the sixth wave is the **Lord of the Land**, who walks past the vault
+and swings at the dungeon heart instead. Kill him and you have won; let the heart fall and the
+run ends there. The heart takes about forty seconds of his attention to break, which is the
+time you have to get everything you have housed across the map. Creatures leave their lairs to
 intercept it from anywhere in the dungeon, breaking off whatever they were doing — which in
 practice means arriving one at a time: one beetle loses to a knight but
 leaves it under half health, so the second one through the door finishes it. Arriving together
@@ -181,6 +190,12 @@ payroll takes three missed paydays. Both are long enough to notice the HUD warni
 your way out of trouble — a creature that vanished the moment the vault ran dry would read as
 a bug rather than as a consequence.
 
+**The heart is a structure, not a fighter.** It sits on the battlefield like anything else, but
+it never moves and never swings back, and enemy searches skip structures unless asked. That is
+what keeps a knight from stopping to hack at the masonry while the vault stands open, and it
+means the Lord is a different problem rather than a knight with more health — one line of
+intent in the catalog, no special case in the AI.
+
 **Digging is what invites the raids in.** The hero gate has to be dug through to before
 anything comes out of it, exactly like the portal. That makes expanding a decision rather than
 a chore: the map is not a safe box you empty at your own pace, and the two things worth digging
@@ -197,6 +212,11 @@ the catalog for the day a lazier creature wants one.
 which for a prototype means writing a game-over screen and a restart before the combat itself
 is worth playing. Loot is a loss you read straight off the gold counter, it is recoverable if
 you kill the thief in time, and it needs no new UI at all.
+
+**The run ends by stopping the clock.** `GameDirector` sets the timescale to zero and puts the
+result in the status line. Disabling every AI in the scene would have been the tidier-sounding
+option and would silently miss whatever gets added next; a frozen dungeon behind the verdict is
+also the right picture of what just happened. There is no restart yet — press Play again.
 
 **Neither side knows the other exists.** `CreatureAI` and `HeroAI` never reference each other —
 they ask `Battlefield` for the nearest enemy and get an `ICombatant` back. One place decides
@@ -251,6 +271,10 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   out of, nobody fetches it while there is nowhere to put it, and once the vault has room an imp
   carries it in. Claims are checked directly: two imps cannot hold the same pile, releasing
   hands it over, and an empty tile cannot be claimed at all.
+- **The endings** — a knight robs the place and leaves the heart untouched, while the Lord
+  walks past the vault, takes nothing, and brings the heart down in about forty seconds, which
+  loses the run. Kill him instead and it is won. The structure rule is checked directly: a
+  knight looking for a fight does not find a building, but whoever asks for one does.
 - **Defending** — a creature answers a raid from right across the map, and one already walking
   to its lair turns round for it.
 - **Duels** — one creature against one hero, which is what a raid really looks like. Checks the

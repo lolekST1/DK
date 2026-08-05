@@ -29,6 +29,8 @@ namespace DK
         public float FirstRaidDelay = 45f;
         public float RaidInterval = 90f;
         public int MaxHeroes = 4;
+        public int WavesBeforeLord = 5;
+        public int HeartHealth = DungeonHeart.DefaultHealth;
 
         [Header("Imps")]
         public int ImpCount = 4;
@@ -43,6 +45,8 @@ namespace DK
         public CreatureManager Creatures { get; private set; }
         public HeroManager Heroes { get; private set; }
         public Battlefield Battlefield { get; private set; }
+        public DungeonHeart Heart { get; private set; }
+        public GameDirector Director { get; private set; }
         public CameraRig Rig { get; private set; }
         public PlayerTools Tools { get; private set; }
 
@@ -54,8 +58,10 @@ namespace DK
             Spillage = CreateLooseGold();
             Economy = CreateResourceManager();
             Battlefield = CreateBattlefield();
+            Heart = CreateHeart();
             Creatures = CreateCreatureManager();
             Heroes = CreateHeroManager();
+            Director = CreateDirector();
 
             // Lighting before the rig: the rig keeps the sun in step with its own yaw.
             var sun = CreateLighting();
@@ -139,8 +145,29 @@ namespace DK
             heroes.FirstRaidDelay = FirstRaidDelay;
             heroes.RaidInterval = RaidInterval;
             heroes.MaxHeroes = MaxHeroes;
-            heroes.Configure(Grid, Rooms, Economy, Spillage, Battlefield);
+            heroes.WavesBeforeLord = WavesBeforeLord;
+            heroes.Configure(Grid, Rooms, Economy, Spillage, Battlefield, Heart);
             return heroes;
+        }
+
+        DungeonHeart CreateHeart()
+        {
+            var go = new GameObject("DungeonHeart");
+            go.transform.SetParent(transform, false);
+
+            var heart = go.AddComponent<DungeonHeart>();
+            heart.Configure(Battlefield, Rooms.HeartCell, Rooms.HeartCore, HeartHealth);
+            return heart;
+        }
+
+        GameDirector CreateDirector()
+        {
+            var go = new GameObject("GameDirector");
+            go.transform.SetParent(transform, false);
+
+            var director = go.AddComponent<GameDirector>();
+            director.Configure(Heart, Heroes);
+            return director;
         }
 
         GridManager CreateGrid()
@@ -298,7 +325,8 @@ namespace DK
         {
             var go = new GameObject("HUD");
             go.transform.SetParent(transform, false);
-            go.AddComponent<GameHud>().Configure(Economy, Rooms, Tools, Imps, Creatures, Heroes);
+            go.AddComponent<GameHud>().Configure(Economy, Rooms, Tools, Imps, Creatures, Heroes,
+                                                 Heart, Director);
         }
     }
 }

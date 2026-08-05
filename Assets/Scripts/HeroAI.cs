@@ -49,11 +49,14 @@ namespace DK
 
         Vector3 ICombatant.Position => transform.position;
 
+        bool ICombatant.IsStructure => false;
+
         GridManager _grid;
         RoomManager _rooms;
         ResourceManager _economy;
         LooseGold _loose;
         Battlefield _battlefield;
+        DungeonHeart _heart;
         GridWalker _walker;
 
         Renderer _bodyRenderer;
@@ -73,14 +76,16 @@ namespace DK
         static readonly Color HurtTint = new Color(1.35f, 0.55f, 0.5f);
 
         public void Configure(GridManager grid, RoomManager rooms, ResourceManager economy,
-                              LooseGold loose, Battlefield battlefield, HeroKind kind,
-                              Transform body, Renderer bodyRenderer, Vector2Int gateCell)
+                              LooseGold loose, Battlefield battlefield, DungeonHeart heart,
+                              HeroKind kind, Transform body, Renderer bodyRenderer,
+                              Vector2Int gateCell)
         {
             _grid = grid;
             _rooms = rooms;
             _economy = economy;
             _loose = loose;
             _battlefield = battlefield;
+            _heart = heart;
 
             Kind = kind;
             _stats = HeroCatalog.Get(kind);
@@ -167,11 +172,15 @@ namespace DK
 
             if (_hasGoal)
             {
-                // Arrived at the vault tile it came for.
-                int lifted = Rob(_goal);
                 _hasGoal = false;
 
-                if (lifted > 0)
+                // Arrived. Either at the heart it is besieging, or at the vault tile it came
+                // for — and a tile another hero may have already emptied.
+                if (_stats.GoesForTheHeart)
+                {
+                    if (TrySiegeHeart()) return;
+                }
+                else if (Rob(_goal) > 0)
                 {
                     BeginEscape();
                     return;
@@ -181,6 +190,15 @@ namespace DK
             _decisionCooldown -= dt;
             if (_decisionCooldown > 0f) return;
             _decisionCooldown = 0.5f;
+
+            if (_stats.GoesForTheHeart)
+            {
+                // No loot, no leaving: it came for the heart and stays until one of them is
+                // finished. Standing still is right if it cannot reach it — the defenders will
+                // come to it, which is the fight either way.
+                TrySiegeHeart();
+                return;
+            }
 
             if (TrySelectVault()) return;
 
@@ -196,7 +214,10 @@ namespace DK
                 _walker.Stop();
                 _hasGoal = false;
                 _decisionCooldown = 0f;
-                State = CarriedGold > 0 ? HeroState.Escaping : HeroState.Advancing;
+                State = CarriedGold > 0 && !_stats.GoesForTheHeart
+                    ? HeroState.Escaping
+                    : HeroState.Advancing;
+
                 if (State == HeroState.Escaping) BeginEscape();
                 return;
             }
@@ -255,6 +276,23 @@ namespace DK
             _enemy = null;
             _hasGoal = false;
             _walker.SetPath(_gateCell);
+        }
+
+        /// <summary>
+        /// Walks at the heart, and starts swinging once it is next to it. The heart is a
+        /// structure, so it never turns up in an ordinary enemy search — it has to be asked
+        /// for by name, and only what came for it does that.
+        /// </summary>
+        bool TrySiegeHeart()
+        {
+            if (_heart == null || !_heart.IsAlive) return false;
+
+            if (Battlefield.InReach(this, _heart)) return Engage(_heart);
+            if (!_walker.SetPath(_heart.Cell)) return false;
+
+            _goal = _heart.Cell;
+            _hasGoal = true;
+            return true;
         }
 
         /// <summary>Nearest vault tile that actually has gold on it and can be walked to.</summary>

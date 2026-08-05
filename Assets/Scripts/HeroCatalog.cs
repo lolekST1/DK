@@ -5,6 +5,7 @@ namespace DK
     public enum HeroKind
     {
         Knight = 0,
+        Lord,
     }
 
     /// <summary>
@@ -28,6 +29,12 @@ namespace DK
             /// <summary>How far off it will notice a defender, in tiles.</summary>
             public int AlertRange;
 
+            /// <summary>
+            /// Ignores the vault and marches on the dungeon heart instead. This is what makes
+            /// the last wave a different problem rather than a bigger one.
+            /// </summary>
+            public bool GoesForTheHeart;
+
             public Color Colour;
         }
 
@@ -35,6 +42,27 @@ namespace DK
         {
             switch (kind)
             {
+                case HeroKind.Lord:
+                    return new Entry
+                    {
+                        Name = "Lord of the Land",
+
+                        // Four beetles arriving one at a time lose to it; four together win
+                        // with losses. It is meant to be the fight the whole dungeon was for,
+                        // and to be unwinnable by a keeper who never housed anybody.
+                        Health = 320,
+                        Damage = 14,
+                        AttackInterval = 1.3f,
+                        MoveSpeed = 2.2f,
+
+                        // Not here for the money.
+                        LootCapacity = 0,
+                        AlertRange = 8,
+                        GoesForTheHeart = true,
+
+                        Colour = new Color(0.94f, 0.86f, 0.42f),
+                    };
+
                 default:
                     return new Entry
                     {

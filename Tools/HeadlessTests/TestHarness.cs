@@ -122,6 +122,7 @@ public static class TestHarness
         PortalChecks();
 
         // --- heroes, raids and combat -----------------------------------------
+        EndgameChecks();
         DefenceChecks();
         DuelChecks();
         CombatChecks();
@@ -697,6 +698,107 @@ public static class TestHarness
         Check(stillClaimed == 0, $"no dig claim outlived the tile it was on ({stillClaimed} left)");
     }
 
+    // ----------------------------------------------------------------- endgame
+
+    static readonly MethodInfo DirectorUpdate =
+        typeof(GameDirector).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    /// <summary>
+    /// The two ways a run can end. Also that an ordinary raid cannot end it either way: a
+    /// knight is here for the gold and leaves the masonry alone.
+    /// </summary>
+    static void EndgameChecks()
+    {
+        // --- a knight ignores the heart ---------------------------------------
+        var world = OpenGateWorld("Endgame", out var field, out var heart, out var heroes);
+        heroes.WavesBeforeLord = 5;
+
+        Check(!field.TryFindNearestEnemy(heart, int.MaxValue, out _),
+            "the heart never goes looking for a fight");
+
+        heroes.Raid();
+        var knight = heroes.Heroes[0];
+        Check(knight.Kind == HeroKind.Knight, "the early waves are knights");
+        Check(heroes.WavesSent == 1 && !heroes.LordSent, "and the wave is counted");
+
+        Check(!field.TryFindNearestEnemy((ICombatant)knight, int.MaxValue, out _),
+            "a knight looking for a fight does not find a building");
+        Check(field.TryFindNearestEnemy((ICombatant)knight, int.MaxValue, true, out var found) && found == heart,
+            "though it is there for whoever asks for it");
+
+        float raid = RunHeroUntil(knight, () => knight.HasEscaped, 400f);
+        Check(raid > 0f, $"the knight robbed the place and left ({raid:0.0}s)");
+        Check(heart.Health == heart.MaxHealth, "and never laid a finger on the heart");
+
+        // --- the Lord comes for the heart itself -------------------------------
+        var siege = OpenGateWorld("Siege", out var siegeField, out var siegeHeart, out var siegeHeroes);
+        siegeHeroes.WavesBeforeLord = 0;
+
+        var director = new GameObject("SiegeDirector").AddComponent<GameDirector>();
+        director.Configure(siegeHeart, siegeHeroes);
+        Check(director.Result == Outcome.Playing, "the run starts undecided");
+
+        int goldBefore = siege.Economy.Gold;
+        siegeHeroes.Raid();
+
+        var lord = siegeHeroes.Heroes[0];
+        Check(lord.Kind == HeroKind.Lord && siegeHeroes.LordSent, "the last wave is the Lord of the Land");
+
+        float struck = RunHeroUntil(lord, () => siegeHeart.Health < siegeHeart.MaxHealth, 200f);
+        Check(struck > 0f, $"he walked past the vault and started on the heart ({struck:0.0}s)");
+        Check(siege.Economy.Gold == goldBefore, "taking nothing on the way");
+
+        float fell = RunHeroUntil(lord, () => !siegeHeart.IsAlive, 400f);
+        Check(fell > 0f, $"and brought it down ({fell:0.0}s)");
+        Check(director.Result == Outcome.Lost, "which loses the run");
+        Check(director.Finished, "and ends it");
+
+        // --- or you kill him and the dungeon is yours --------------------------
+        var won = OpenGateWorld("Won", out _, out var wonHeart, out var wonHeroes);
+        wonHeroes.WavesBeforeLord = 0;
+
+        var winDirector = new GameObject("WinDirector").AddComponent<GameDirector>();
+        winDirector.Configure(wonHeart, wonHeroes);
+
+        wonHeroes.Raid();
+        var doomed = wonHeroes.Heroes[0];
+        doomed.TakeDamage(10000, null);
+
+        StepRaidClock(wonHeroes, 0.2f);
+        Check(wonHeroes.LordDefeated, "the Lord can be killed");
+
+        DirectorUpdate.Invoke(winDirector, null);
+        Check(winDirector.Result == Outcome.Won, "which wins the run");
+        Check(wonHeart.Health == wonHeart.MaxHealth, "with the heart untouched");
+    }
+
+    /// <summary>A world with a heart, a hero gate, and a corridor already dug between them.</summary>
+    static World OpenGateWorld(string name, out Battlefield battlefield, out DungeonHeart heart,
+                               out HeroManager heroes)
+    {
+        var world = NewWorld(name, 1337);
+        battlefield = new GameObject(name + "Field").AddComponent<Battlefield>();
+
+        heart = new GameObject(name + "Heart").AddComponent<DungeonHeart>();
+        heart.Configure(battlefield, world.Grid.BaseCell, null, DungeonHeart.DefaultHealth);
+
+        var gateCell = new Vector2Int(5, 5);
+        world.Grid.CarveChamber(gateCell, 1);
+        world.Rooms.BuildHeroGate(gateCell, 1);
+
+        foreach (var cell in new[]
+                 {
+                     new Vector2Int(7, 8), new Vector2Int(6, 8), new Vector2Int(5, 8),
+                     new Vector2Int(5, 7),
+                 })
+            world.Grid.CarveChamber(cell, 0);
+
+        heroes = new GameObject(name + "Heroes").AddComponent<HeroManager>();
+        heroes.Configure(world.Grid, world.Rooms, world.Economy, world.Spillage, battlefield, heart);
+
+        return world;
+    }
+
     // --------------------------------------------------------------- defending
 
     /// <summary>
@@ -804,7 +906,7 @@ public static class TestHarness
     static HeroAI NewHero(World world, Battlefield battlefield, Vector2Int cell)
     {
         var hero = new GameObject("DuelHero").AddComponent<HeroAI>();
-        hero.Configure(world.Grid, world.Rooms, world.Economy, world.Spillage, battlefield,
+        hero.Configure(world.Grid, world.Rooms, world.Economy, world.Spillage, battlefield, null,
                        HeroKind.Knight, new GameObject("DuelHeroBody").transform, null, cell);
         return hero;
     }
@@ -875,7 +977,7 @@ public static class TestHarness
         var heroes = new GameObject("RaidHeroes").AddComponent<HeroManager>();
         heroes.FirstRaidDelay = 1f;
         heroes.RaidInterval = 1000f;
-        heroes.Configure(grid, rooms, world.Economy, world.Spillage, battlefield);
+        heroes.Configure(grid, rooms, world.Economy, world.Spillage, battlefield, null);
 
         // --- sealed gate ------------------------------------------------------
         StepRaidClock(heroes, 5f);

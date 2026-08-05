@@ -301,7 +301,11 @@ namespace UnityEngine
         public static bool GetKeyDown(KeyCode key) => false;
     }
 
-    public static class Time { public static float deltaTime = 1f / 60f; }
+    public static class Time
+    {
+        public static float deltaTime = 1f / 60f;
+        public static float timeScale = 1f;
+    }
     public static class Screen { public static int width => 0; public static int height => 0; }
     public static class Application { public static bool isFocused => true; public static bool isBatchMode => false; }
     public static class Debug

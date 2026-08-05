@@ -32,6 +32,8 @@ namespace DK
         readonly List<ToolButton> _toolButtons = new List<ToolButton>();
         CreatureManager _creatures;
         HeroManager _heroes;
+        DungeonHeart _heart;
+        GameDirector _director;
 
         float _refreshTimer;
 
@@ -96,9 +98,11 @@ namespace DK
 
         public void Configure(ResourceManager resources, RoomManager rooms, PlayerTools tools,
                               IReadOnlyList<ImpAI> imps, CreatureManager creatures,
-                              HeroManager heroes)
+                              HeroManager heroes, DungeonHeart heart, GameDirector director)
         {
             _heroes = heroes;
+            _heart = heart;
+            _director = director;
             _resources = resources;
             _rooms = rooms;
             _tools = tools;
@@ -188,6 +192,9 @@ namespace DK
             if (_heroes != null && _heroes.GoldStolen > 0)
                 Builder.Append("   Stolen ").Append(_heroes.GoldStolen);
 
+            if (_heart != null && _heart.Health < _heart.MaxHealth)
+                Builder.Append("   Heart ").Append(_heart.Health).Append('/').Append(_heart.MaxHealth);
+
             _gold.Set(Builder.ToString());
         }
 
@@ -250,12 +257,22 @@ namespace DK
             if (_tools != null && _tools.CurrentTool != PlayerTool.Dig && _tools.HoverRefusal != null)
                 return "Cannot place here: " + _tools.HoverRefusal;
 
+            // Nothing else is worth saying once the run is over.
+            if (_director != null && _director.Finished)
+                return _director.Result == Outcome.Won
+                    ? "The Lord of the Land is dead. The dungeon is yours."
+                    : "The dungeon heart is broken. The keeper is finished.";
+
             // A raid outranks every slow problem: it is the only one with a clock on it.
             if (_heroes != null && _heroes.HeroCount > 0)
             {
                 int loot = 0;
                 for (int i = 0; i < _heroes.Heroes.Count; i++)
                     if (_heroes.Heroes[i] != null) loot += _heroes.Heroes[i].CarriedGold;
+
+                if (_heroes.LordSent)
+                    return "The Lord of the Land is here, and he is not after the gold. " +
+                           "Everything you have housed, now.";
 
                 return loot > 0
                     ? "Heroes in the dungeon — one is carrying off " + loot +
@@ -293,9 +310,13 @@ namespace DK
                 return "No lair yet. Imps with a lair dig faster [3].";
 
             // Only worth saying before the first raid, while it is still news.
-            if (_heroes != null && _heroes.GateReachable && _heroes.Escaped + _heroes.Repelled == 0)
+            if (_heroes != null && _heroes.GateReachable && _heroes.WavesSent == 0)
                 return "You have dug through to a hero gate. Raids start in " +
                        Mathf.CeilToInt(_heroes.SecondsToRaid) + "s — house some creatures [3].";
+
+            if (_heroes != null && _heroes.WavesSent > 0 && !_heroes.LordSent)
+                return "Raid " + _heroes.WavesSent + " repelled. " + _heroes.WavesUntilLord +
+                       " to go before the Lord of the Land comes for the heart.";
 
             return string.Empty;
         }
