@@ -86,8 +86,30 @@ working independently. Set up at project init:
 
 ## Beyond the prototype
 The vertical slice above is built, verified in-Editor and as a WebGL build, and merged.
-Work landed since: camera rotation (Q/E) with the sun following the rig, and multiple
-imps sharing one dig queue via per-tile claims in `GridManager`.
+The scope list above is the original brief and is kept as written; what actually shipped has
+moved past it in places, recorded here.
+
+Landed since:
+- Camera rotation (Q/E) with the sun following the rig.
+- Multiple imps sharing one dig queue via per-tile claims in `GridManager`.
+- **Rooms and the gold economy.** A `RoomManager` layer on top of terrain: a 3×3 dungeon
+  heart placed at bootstrap, player-built treasuries and lairs painted with the mouse and
+  paid for out of stored gold, and selling for half back. `RoomCatalog` holds every cost and
+  capacity, so balancing is one file.
+- **Gold is hauled, not credited.** Mined gold is carried by the imp to a vault tile with
+  free space; `ImpAI` gained a `HaulGold` state. An imp with nowhere to bank waits, then
+  spills. `ResourceManager` is now a facade over the vaults rather than an int of its own,
+  so `AddGold(int)` from the brief no longer exists — use `Bank(cell, amount)`.
+- **Lairs.** Imps claim a lair tile unprompted and dig 30% faster once they have one.
+- Two renames as their jobs widened: `TileDigger` → `PlayerTools` (dig, build and sell
+  tools), `GoldHud` → `GameHud` (gold, tool bar, status line).
+
+Deliberately still simplified: dug floor is owned immediately, with no per-tile claiming
+step for the imps — see the design notes in `README.md`.
+
+Natural next parts, roughly in dependency order: a portal spawning creatures other than
+imps, with needs (lairs already exist to hang them off); then combat and hero incursions;
+then verticality, which the 3D tile array is already shaped for.
 
 ## Workflow
 Follow the usual approach: work independently, self-fix compile/runtime
