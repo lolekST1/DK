@@ -17,8 +17,12 @@ namespace DK
         /// <summary>Seconds between arrivals while the dungeon can take another creature.</summary>
         public float SpawnInterval = 20f;
 
-        /// <summary>Seconds between wage bills.</summary>
-        public float PaydayInterval = 45f;
+        /// <summary>
+        /// Seconds between wage bills. A full roster at 20 gold each is a third of a gold a
+        /// second per creature, which a crew of imps can out-earn with room to spare — at 30
+        /// every 45s, eight creatures cost more than the dungeon could dig.
+        /// </summary>
+        public float PaydayInterval = 60f;
 
         /// <summary>Hard ceiling, so a huge lair block cannot spawn an unbounded crowd.</summary>
         public int MaxCreatures = 8;

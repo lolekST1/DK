@@ -18,7 +18,11 @@ namespace DK
         {
             public string Name;
 
-            /// <summary>Gold this creature takes out of the vault every payday.</summary>
+            /// <summary>
+            /// Gold this creature takes out of the vault every payday. Read it together with
+            /// <see cref="CreatureManager.PaydayInterval"/>: what matters is the bill per
+            /// second for a full roster against what a crew of imps can actually mine.
+            /// </summary>
             public int Wage;
 
             public float MoveSpeed;
@@ -66,7 +70,7 @@ namespace DK
                     return new Entry
                     {
                         Name = "Beetle",
-                        Wage = 30,
+                        Wage = 20,
 
                         MoveSpeed = 2.2f,
 

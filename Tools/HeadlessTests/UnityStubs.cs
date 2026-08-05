@@ -339,6 +339,7 @@ namespace UnityEngine
         public static int pixelLightCount;
         public static string[] names => new string[0];
         public static void SetQualityLevel(int level, bool applyExpensiveChanges) { }
+        public static int GetQualityLevel() => 0;
     }
 
     [AttributeUsage(AttributeTargets.Field)] public class HeaderAttribute : Attribute { public HeaderAttribute(string h) { } }

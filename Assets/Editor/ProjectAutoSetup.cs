@@ -34,6 +34,10 @@ namespace DK.EditorTools
             EnsureSerializationSettings();
             EnsureBootstrapScene();
             EnsureRenderPipeline();
+
+            // Unconditionally, not just when the pipeline asset is first created: the asset
+            // usually already exists by the time anyone notices the build looks wrong.
+            TuneRendering(GraphicsSettings.defaultRenderPipeline);
         }
 
         [MenuItem("Dungeon Keeper Prototype/Re-run Project Setup")]
@@ -234,10 +238,22 @@ namespace DK.EditorTools
         /// </summary>
         public static void TuneRendering(RenderPipelineAsset pipeline)
         {
-            // Built-in fallback path, and harmless under URP.
-            QualitySettings.antiAliasing = 4;
-            QualitySettings.shadowDistance = ShadowDistance;
-            QualitySettings.pixelLightCount = 4;
+            // Every level, not just the active one. These setters write to whichever quality
+            // level is current, and a player build uses the level configured for its platform
+            // — usually not the one the Editor happens to be sitting on. Setting only the
+            // active level is why the build still looked worse than the Game view.
+            int active = QualitySettings.GetQualityLevel();
+            int levels = QualitySettings.names.Length;
+
+            for (int i = 0; i < levels; i++)
+            {
+                QualitySettings.SetQualityLevel(i, false);
+                QualitySettings.antiAliasing = 4;
+                QualitySettings.shadowDistance = ShadowDistance;
+                QualitySettings.pixelLightCount = 4;
+            }
+
+            if (levels > 0) QualitySettings.SetQualityLevel(active, false);
 
             if (pipeline == null) return;
 

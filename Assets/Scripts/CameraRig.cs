@@ -45,11 +45,12 @@ namespace DK
             _panBounds = new Bounds(center, size);
 
             // Far enough out to hold the whole grid in frame at this pitch, whatever size it
-            // is. A fixed ceiling meant a bigger map could only ever be seen a corner at a
-            // time, which reads as the map being dark rather than as the camera being close.
+            // is, and starting there rather than part way in. A ground square of side S needs
+            // roughly S * 1.4 of camera distance at 45 degrees and a 55 degree field of view;
+            // the ceiling is well past that so there is somewhere left to pull back to.
             float span = Mathf.Max(size.x, size.z);
-            MaxDistance = Mathf.Max(MaxDistance, span * 1.45f);
-            _distance = Mathf.Clamp(span * 0.95f, MinDistance, MaxDistance);
+            MaxDistance = Mathf.Max(MaxDistance, span * 2.0f);
+            _distance = Mathf.Clamp(span * 1.4f, MinDistance, MaxDistance);
 
             _targetYaw = YawDegrees;
             _currentYaw = YawDegrees;

@@ -31,7 +31,7 @@ namespace DK
         // --- portal ---
         [NonSerialized] public int PortalRadius = 1;
         [NonSerialized] public float CreatureSpawnInterval = 20f;
-        [NonSerialized] public float PaydayInterval = 45f;
+        [NonSerialized] public float PaydayInterval = 60f;
         [NonSerialized] public int MaxCreatures = 8;
 
         // --- heroes ---

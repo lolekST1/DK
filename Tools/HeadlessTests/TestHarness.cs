@@ -121,6 +121,9 @@ public static class TestHarness
         // --- portal, creatures and payroll ------------------------------------
         PortalChecks();
 
+        // --- the dungeon can pay for what the portal sends it -------------------
+        PayrollBalanceChecks();
+
         // --- heroes, raids and combat -----------------------------------------
         EndgameChecks();
         DefenceChecks();
@@ -696,6 +699,56 @@ public static class TestHarness
             if (grid.IsClaimedByOther(new Vector2Int(x, z), null)) stillClaimed++;
 
         Check(stillClaimed == 0, $"no dig claim outlived the tile it was on ({stillClaimed} left)");
+    }
+
+    // -------------------------------------------------------- payroll balance
+
+    /// <summary>
+    /// A full roster has to be affordable on what a crew of imps can actually dig. This is the
+    /// one balance figure that can be checked rather than eyeballed: mine for two minutes,
+    /// then compare what was banked against the wage bill for the same two minutes with every
+    /// lair filled. It used to fail — eight creatures at 30 gold every 45 seconds cost more
+    /// than the dungeon could earn, so a player who housed a full roster lost it to payday.
+    /// </summary>
+    static void PayrollBalanceChecks()
+    {
+        var world = NewWorld("Wages", 4242);
+
+        // Enough vault that nothing is lost to a full treasury: this measures digging, not
+        // storage, and storage has its own tests.
+        world.Rooms.DepositAnywhere(1000);
+        // Four tiles is what the heart's 225 will pay for, and 1000 of capacity is far more
+        // than two minutes of digging can fill.
+        for (int x = 8; x <= 11; x++)
+            Check(world.Rooms.Build(x, 8, RoomType.Treasury), $"treasury tile at {x},8");
+
+        var imps = new List<ImpAI>();
+        for (int i = 0; i < 6; i++) imps.Add(AddImp(world, $"WageImp_{i}", world.Grid.BaseCell));
+
+        for (int x = 0; x < world.Grid.Width; x++)
+        for (int z = 0; z < world.Grid.Depth; z++)
+            world.Grid.MarkForDigging(x, z);
+
+        int banked = world.Economy.TotalBanked;
+        const float window = 120f;
+
+        int steps = (int)(window / Time.deltaTime);
+        for (int i = 0; i < steps; i++)
+            foreach (var imp in imps) ImpUpdate.Invoke(imp, null);
+
+        int earned = world.Economy.TotalBanked - banked;
+
+        // What a full house costs over the same stretch.
+        var manager = new GameObject("WageManager").AddComponent<CreatureManager>();
+        float bill = manager.MaxCreatures * CreatureCatalog.WageOf(CreatureKind.Beetle)
+                     * (window / manager.PaydayInterval);
+
+        Check(earned > bill,
+            $"a crew out-earns a full roster's wages ({earned} banked against {bill:0} owed in {window:0}s)");
+
+        // Comfortably, not by a hair: a raid or a bad patch of rock should not tip it over.
+        Check(earned > bill * 1.5f,
+            $"and with enough margin to survive a raid ({earned / bill:0.0}x the bill)");
     }
 
     // ----------------------------------------------------------------- endgame

@@ -29,7 +29,7 @@ when the vault cannot cover the next tile.
 | Click a tool button | Select that tool |
 | `1` / `Esc` | Dig tool (default) |
 | `2` | Build treasury — 50 gold a tile, holds 250 |
-| `3` | Build lair — 100 gold a tile, one imp each |
+| `3` | Build lair — 100 gold a tile, one creature each |
 | `4` | Sell tool — tears a room out for half its cost |
 | Left mouse (hold to paint) | Apply the selected tool |
 | Right mouse (hold to paint) | Undo it: unmark while digging, sell while building |
@@ -244,9 +244,10 @@ not swallow clicks aimed at the map.
 multisampling off and fifty metres of shadow distance. The Game view hides both — it is usually
 looking at part of the dungeon from close up — and a build does not: block edges crawl, and
 everything past the shadow distance lights differently from everything inside it. Both are set
-explicitly on the pipeline asset, through reflection like the rest of the URP handling, so the
-project still builds with the package absent. The camera's zoom-out also scales with the grid,
-because a fixed ceiling meant a bigger map could only be seen a corner at a time.
+explicitly, and across *every* quality level rather than the active one, because
+`QualitySettings` writes to whichever level is current and a player build uses the level
+configured for its platform, not the one the Editor happens to be sitting on. The camera's
+framing scales with the grid too, and starts far enough out to hold all of it.
 
 **No colliders.** Mouse picking is two maths-plane raycasts — one at the top of the blocks,
 one at floor level — so there is not a single collider in the scene.
@@ -283,6 +284,10 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   out of, nobody fetches it while there is nowhere to put it, and once the vault has room an imp
   carries it in. Claims are checked directly: two imps cannot hold the same pile, releasing
   hands it over, and an empty tile cannot be claimed at all.
+- **Payroll balance** — the one balance figure that can be checked rather than eyeballed. A
+  crew of six digs for two simulated minutes, and what they bank has to beat the wage bill for
+  a full house over the same stretch, with half again on top so a raid does not tip it over.
+  It fails at the old numbers.
 - **The endings** — a knight robs the place and leaves the heart untouched, while the Lord
   walks past the vault, takes nothing, and brings the heart down in about forty seconds, which
   loses the run. Kill him instead and it is won. The structure rule is checked directly: a
