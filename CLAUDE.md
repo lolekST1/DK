@@ -100,7 +100,9 @@ Landed since:
   free space; `ImpAI` gained a `HaulGold` state. An imp with nowhere to bank waits, then
   spills. `ResourceManager` is now a facade over the vaults rather than an int of its own,
   so `AddGold(int)` from the brief no longer exists — use `Bank(cell, amount)`.
-- **Lairs.** Imps claim a lair tile unprompted and dig 30% faster once they have one.
+- **Lairs.** Creatures claim a lair tile unprompted. Imps do not sleep and never take one:
+  sharing the pool meant a crew of six swallowed the first six lairs a player built, and the
+  portal then reported no free lair with nine of them on the map.
 - **Mined gold falls on the floor, as in the original.** `LooseGold` owns the piles, with
   per-pile claims; `ImpAI` gained a `FetchGold` state that runs *after* digging, so imps clear
   rock first and collect only when they have no dig work left. `AddGold`-style crediting and

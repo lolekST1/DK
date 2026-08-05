@@ -31,9 +31,6 @@ namespace DK
         public float TurnSpeed = 12f;
         public float DigDuration = 1.2f;
 
-        /// <summary>Dig time multiplier for an imp that owns a lair. Sleeping somewhere pays off.</summary>
-        public const float RestedDigMultiplier = 0.7f;
-
         /// <summary>
         /// How long an imp will hold gold it cannot bank before dumping it and going back to
         /// work. Without this a full vault quietly freezes the whole crew, which reads as a
@@ -57,10 +54,13 @@ namespace DK
         public bool HasDigTarget { get; private set; }
         public Vector2Int DigTarget => _digTarget;
 
-        /// <summary>Lair tile if this imp owns one, otherwise the spot near the heart it was given.</summary>
-        public Vector2Int HomeCell => _rooms != null ? _rooms.HomeFor(this) : _fallbackHome;
-
-        public bool IsRested => _rooms != null && _rooms.HasLair(this);
+        /// <summary>
+        /// Where this imp stands when it has nothing to do. Imps do not sleep and do not take
+        /// lairs: every lair an imp claimed was one the portal could not send a creature to,
+        /// and with a crew of six that quietly swallowed the first six a player built. Nothing
+        /// on screen said so — the portal just reported no free lair.
+        /// </summary>
+        public Vector2Int HomeCell => _fallbackHome;
 
         GridManager _grid;
         ResourceManager _resources;
@@ -109,7 +109,6 @@ namespace DK
             if (_body != null) _bodyBaseY = _body.localPosition.y;
 
             _fallbackHome = grid.IsWalkable(fallbackHome) ? fallbackHome : grid.BaseCell;
-            if (_rooms != null) _rooms.RegisterWorker(this, _fallbackHome);
 
             transform.position = grid.CellToWorld(_fallbackHome);
             UpdateCarryIcon();
@@ -119,13 +118,9 @@ namespace DK
         {
             ReleaseTarget();
             ReleaseFetchTarget();
-            if (_rooms != null) _rooms.UnregisterWorker(this);
         }
 
         public Vector2Int CurrentCell => _grid.WorldToCell(transform.position);
-
-        /// <summary>Dig time for this imp right now, lair bonus included.</summary>
-        public float EffectiveDigDuration => IsRested ? DigDuration * RestedDigMultiplier : DigDuration;
 
         void Update()
         {
@@ -226,7 +221,7 @@ namespace DK
             FaceTowards(_grid.CellToWorld(_digTarget), dt);
 
             _digTimer += dt;
-            if (_digTimer < EffectiveDigDuration) return;
+            if (_digTimer < DigDuration) return;
 
             int gold = _grid.DigOut(_digTarget.x, _digTarget.y);
 

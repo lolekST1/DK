@@ -29,7 +29,7 @@ when the vault cannot cover the next tile.
 | Click a tool button | Select that tool |
 | `1` / `Esc` | Dig tool (default) |
 | `2` | Build treasury — 50 gold a tile, holds 250 |
-| `3` | Build lair — 100 gold a tile, one creature each |
+| `3` | Build lair — 100 gold a tile, houses one creature |
 | `4` | Sell tool — tears a room out for half its cost |
 | Left mouse (hold to paint) | Apply the selected tool |
 | Right mouse (hold to paint) | Undo it: unmark while digging, sell while building |
@@ -49,8 +49,8 @@ lies there. Imps keep digging as long as there is anything left in the queue, an
 porter once they have no rock left to break — with a crew, whoever runs out of digging first
 starts collecting while the others carry on. Gold only counts once it is walked into a vault,
 so the heart fills up fast and you have to spend your opening 100 gold on a treasury. Piles you
-have nowhere to store just stay on the floor until you build one. Build a lair and an imp moves
-in on its own; imps with somewhere to sleep dig 30% faster.
+have nowhere to store just stay on the floor until you build one. Build a lair and the portal can
+send another creature to fill it; imps do not sleep and never take one.
 
 The portal sits in a sealed cavern three quarters of the way across the map. Dig a route to it
 and creatures start arriving — but only while a lair is standing empty, and imps sleep in the
@@ -184,10 +184,11 @@ missing was somewhere for that gold to have to go. Arrivals are gated on a dug r
 portal and on a free lair, so every creature is something the dungeon earned and then has to
 keep affording.
 
-**Imps and creatures share the housing.** One lair list, claimed first come first served, so an
-imp that moved in is one fewer creature the portal will send. Splitting them into two room
-types would remove the decision; leaving them shared means the player has to choose between
-faster digging and more tenants.
+**Lairs are for creatures only.** They used to be shared with the imps, on the theory that
+housing should be a budget spent between faster digging and more tenants. In practice a crew of
+six silently ate the first six lairs a player built, the portal reported "no free lair" with
+nine of them standing there, and nothing on screen connected the two. A lair now means one more
+creature, which is what building one looks like it should do.
 
 **Anger is slow on purpose.** Homelessness takes two minutes to drive a creature out, and
 payroll takes three missed paydays. Both are long enough to notice the HUD warning and dig

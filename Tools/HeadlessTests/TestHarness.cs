@@ -125,6 +125,7 @@ public static class TestHarness
         PayrollBalanceChecks();
 
         // --- heroes, raids and combat -----------------------------------------
+        LastStandChecks();
         EndgameChecks();
         DefenceChecks();
         DuelChecks();
@@ -286,64 +287,35 @@ public static class TestHarness
     {
         var world = NewWorld("Lair", 2024);
         var rooms = world.Rooms;
+        var field = new GameObject("LairField").AddComponent<Battlefield>();
 
-        var impA = AddImp(world, "LairImpA", new Vector2Int(8, 8));
-        var impB = AddImp(world, "LairImpB", new Vector2Int(8, 9));
-
-        Check(!impA.IsRested, "an imp with no lair is not rested");
-        Check(impA.HomeCell == new Vector2Int(8, 8), "with no lair the imp falls back to its given home");
+        var imp = AddImp(world, "LairImp", new Vector2Int(8, 8));
 
         rooms.DepositAnywhere(100000);
         Check(rooms.Build(12, 8, RoomType.Lair), "first lair built");
         Check(rooms.Build(12, 9, RoomType.Lair), "second lair built");
 
-        Step(impA, 1f);
-        Step(impB, 1f);
+        // Imps do not sleep, and must not eat the housing the portal needs.
+        Step(imp, 2f);
+        Check(imp.HomeCell == new Vector2Int(8, 8), "an imp idles where it was put, not in a lair");
+        Check(rooms.FreeLairCount == 2, $"and leaves both lairs free ({rooms.FreeLairCount})");
 
-        Check(impA.IsRested && impB.IsRested, "both imps moved into a lair");
-        Check(impA.HomeCell != impB.HomeCell, "no two imps share a lair tile");
-        Check(impA.EffectiveDigDuration < impA.DigDuration, "a rested imp digs faster");
+        var one = NewBeetle(world, field, field, world.Grid.BaseCell);
+        var two = NewBeetle(world, field, field, world.Grid.BaseCell);
 
-        // Selling a lair evicts exactly the imp that lived there.
-        var evicted = impA.HomeCell;
+        StepCreature(one, 1f);
+        StepCreature(two, 1f);
+
+        Check(one.HasLair && two.HasLair, "both creatures moved into a lair");
+        Check(one.HomeCell != two.HomeCell, "no two creatures share a lair tile");
+        Check(rooms.FreeLairCount == 0, "which uses both of them up");
+
+        // Selling a lair evicts exactly the creature that lived there.
+        var evicted = one.HomeCell;
         Check(rooms.Sell(evicted.x, evicted.y, out _), "a lair tile can be sold");
-        Check(!impA.IsRested, "the imp lost its lair when the tile was sold");
-        Check(impB.IsRested, "the other imp kept its own lair");
-        Check(impA.HomeCell == new Vector2Int(8, 8), "the evicted imp fell back to its old home");
-
-        // Rested imps really are quicker over the same queue.
-        float rested = TimeToClearRock(seed: 3131, withLair: true);
-        float weary = TimeToClearRock(seed: 3131, withLair: false);
-        Check(rested > 0f && weary > 0f, $"both crews finished (rested {rested:0.0}s, weary {weary:0.0}s)");
-        Check(rested < weary, "the imp with a lair cleared the same rock sooner");
+        Check(!one.HasLair, "the creature lost its lair when the tile was sold");
+        Check(two.HasLair, "the other creature kept its own");
     }
-
-    /// <summary>Clears an identical run of plain rock, with and without a lair to sleep in.</summary>
-    static float TimeToClearRock(int seed, bool withLair)
-    {
-        var world = NewWorld(withLair ? "Rested" : "Weary", seed);
-        var imp = AddImp(world, "SpeedImp", world.Grid.BaseCell);
-
-        if (withLair)
-        {
-            world.Rooms.DepositAnywhere(100000);
-            world.Rooms.Build(8, 8, RoomType.Lair);
-        }
-
-        // Plain rock only, so hauling never enters the measurement.
-        int marked = 0;
-        for (int z = 8; z <= 12 && marked < 5; z++)
-        {
-            if (world.Grid.GetTileState(7, z) != TileState.Rock) continue;
-            if (!world.Grid.MarkForDigging(7, z)) continue;
-            marked++;
-        }
-
-        if (marked == 0) return -1f;
-        return RunUntil(imp, () => world.Grid.QueuedCount == 0, 400f);
-    }
-
-    // ------------------------------------------------------------------ multi-imp
 
     static void MultiImpChecks()
     {
@@ -749,6 +721,99 @@ public static class TestHarness
         // Comfortably, not by a hair: a raid or a bad patch of rock should not tip it over.
         Check(earned > bill * 1.5f,
             $"and with enough margin to survive a raid ({earned / bill:0.0}x the bill)");
+    }
+
+    // -------------------------------------------------------------- last stand
+
+    /// <summary>
+    /// A housed dungeon has to be able to kill the Lord. This is the fight the whole economy
+    /// pays for, so the number of creatures it takes is a balance figure worth pinning down
+    /// rather than working out on paper.
+    /// </summary>
+    static void LastStandChecks()
+    {
+        foreach (int knights in new[] { 0, 3 })
+        foreach (int spread in new[] { 0, 12 })
+        for (int defenders = 4; defenders <= 9; defenders++)
+        {
+            var outcome = RunLastStand(defenders, spread, knights, out float seconds,
+                                       out int survivors, out int heartLeft);
+            Console.WriteLine($"    +{knights} knights, spread {spread,2}, {defenders} defenders: " +
+                              $"{outcome,-15} in {seconds,3:0}s ({survivors} left, heart {heartLeft})");
+        }
+
+        // Scattered across the dungeon is the normal case: creatures sleep in their lairs and
+        // come when the Lord turns up, so they arrive strung out rather than as a wall.
+        var nine = RunLastStand(9, 12, 0, out _, out int leftAtNine, out int heartAtNine);
+        Check(nine == "lord dead", $"nine creatures spread over the dungeon still put the Lord down (got: {nine})");
+        Check(heartAtNine > 0, $"with the heart still standing ({heartAtNine})");
+        Check(leftAtNine > 0, "and somebody left alive to hold it");
+    }
+
+    static string RunLastStand(int defenders, int spread, int knights, out float seconds,
+                               out int survivors, out int heartLeft)
+    {
+        var world = OpenGateWorld($"Stand{defenders}x{spread}x{knights}", out var field, out var heart,
+                                  out var heroes);
+
+        // A dug-out dungeon, so defenders can actually cross it.
+        for (int x = 0; x < world.Grid.Width; x++)
+        for (int z = 0; z < world.Grid.Depth; z++)
+            world.Grid.CarveChamber(new Vector2Int(x, z), 0);
+
+        // Housed and paid: this measures the fight, not the payroll.
+        var spawn = world.Grid.BaseCell;
+        var beetles = new List<CreatureAI>();
+        for (int i = 0; i < defenders; i++)
+        {
+            // Ringed around the heart at the given distance, which stands in for lairs dotted
+            // about the map rather than a guard block parked on the heart.
+            double angle = i * 2.0 * Math.PI / Math.Max(1, defenders);
+            var cell = spread == 0
+                ? new Vector2Int(spawn.x + (i % 3) - 1, spawn.y + (i / 3) - 1)
+                : new Vector2Int(spawn.x + (int)Math.Round(Math.Cos(angle) * spread),
+                                 spawn.y + (int)Math.Round(Math.Sin(angle) * spread));
+
+            beetles.Add(NewBeetle(world, field, field, world.Grid.IsWalkable(cell) ? cell : spawn));
+        }
+
+        // Whatever was still inside when the last wave came due.
+        heroes.WavesBeforeLord = knights == 0 ? 0 : 99;
+        for (int i = 0; i < knights; i++) heroes.Raid();
+
+        heroes.WavesBeforeLord = 0;
+        heroes.Raid();
+
+        HeroAI lord = null;
+        foreach (var hero in heroes.Heroes) if (hero.Kind == HeroKind.Lord) lord = hero;
+        if (lord == null)
+        {
+            seconds = -1f;
+            survivors = 0;
+            heartLeft = heart.Health;
+            return "no lord sent";
+        }
+
+        int steps = (int)(400f / Time.deltaTime);
+        seconds = -1f;
+
+        for (int i = 0; i < steps; i++)
+        {
+            for (int h = heroes.Heroes.Count - 1; h >= 0; h--) HeroUpdate.Invoke(heroes.Heroes[h], null);
+            foreach (var beetle in beetles) CreatureUpdate.Invoke(beetle, null);
+
+            if (!lord.IsAlive || !heart.IsAlive)
+            {
+                seconds = (i + 1) * Time.deltaTime;
+                break;
+            }
+        }
+
+        survivors = 0;
+        foreach (var beetle in beetles) if (beetle.IsAlive) survivors++;
+        heartLeft = heart.Health;
+
+        return !heart.IsAlive ? "heart destroyed" : !lord.IsAlive ? "lord dead" : "stalemate";
     }
 
     // ----------------------------------------------------------------- endgame

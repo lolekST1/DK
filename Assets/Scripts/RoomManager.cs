@@ -520,15 +520,15 @@ namespace DK
             return _workerFallback.TryGetValue(worker, out var fallback) ? fallback : _grid.BaseCell;
         }
 
-        /// <summary>True once this creature owns a lair tile. A rested imp digs faster.</summary>
+        /// <summary>True once this creature owns a lair tile to sleep in.</summary>
         public bool HasLair(object worker) =>
             _workerLair.TryGetValue(worker, out var cell) && GetRoom(cell) == RoomType.Lair;
 
         public int LairCount => _lairTiles.Count;
 
         /// <summary>
-        /// Lair tiles nobody sleeps on. Imps and portal creatures share the same housing, so
-        /// an imp that has moved in is one fewer creature the portal will send.
+        /// Lair tiles nobody sleeps on. Only portal creatures take these — imps do not sleep,
+        /// so every lair the player builds is one the portal can fill.
         /// </summary>
         public int FreeLairCount
         {
