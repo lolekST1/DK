@@ -155,6 +155,11 @@ Natural next parts, roughly in dependency order: a restart, which the endings no
 creature and hero kinds, which both catalogs are already shaped for; then verticality, which
 the 3D tile array is already shaped for.
 
+Watch out for: materials are created at runtime, so nothing in the project references a
+shader, so a build strips them all. `ProjectAutoSetup` keeps them in Always Included Shaders.
+Without that, `Shader.Find` returns null in the player and the game renders unlit — in the
+Editor everything looks right, which is what makes it expensive to find.
+
 ## Workflow
 Follow the usual approach: work independently, self-fix compile/runtime
 errors, and deliver a version ready to test in-Editor and as a WebGL build.

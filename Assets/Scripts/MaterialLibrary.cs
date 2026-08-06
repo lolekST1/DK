@@ -27,8 +27,21 @@ namespace DK
 
                 if (_litShader == null) _litShader = Shader.Find("Standard");
                 if (_litShader == null) _litShader = Shader.Find("Universal Render Pipeline/Lit");
-                if (_litShader == null) _litShader = Shader.Find("Sprites/Default");
+                if (_litShader != null) return _litShader;
 
+                // Nothing lit could be found. Shader.Find only returns shaders the build
+                // actually contains, and a build strips everything no asset references — which
+                // is every shader in this project, because all of its materials are made at
+                // runtime. ProjectAutoSetup puts them in Always Included Shaders to stop that.
+                //
+                // Say so instead of quietly carrying on: the fallback is unlit and does not
+                // write depth, so the scene renders flat with the far half painted over by
+                // whatever draws after it. That looks like a lighting bug and is not one.
+                Debug.LogError("[DK] No lit shader in this build — falling back to an unlit one, " +
+                               "so nothing will be shaded and geometry will sort wrongly. Run " +
+                               "Dungeon Keeper Prototype > Re-run Project Setup and build again.");
+
+                _litShader = Shader.Find("Sprites/Default");
                 return _litShader;
             }
         }

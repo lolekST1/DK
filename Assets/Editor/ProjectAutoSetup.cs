@@ -34,6 +34,7 @@ namespace DK.EditorTools
             EnsureSerializationSettings();
             EnsureBootstrapScene();
             EnsureRenderPipeline();
+            EnsureAlwaysIncludedShaders();
 
             // Unconditionally, not just when the pipeline asset is first created: the asset
             // usually already exists by the time anyone notices the build looks wrong.
@@ -217,6 +218,57 @@ namespace DK.EditorTools
                                  "Built-in pipeline; assign a URP asset manually if you want URP.");
             }
         }
+
+        /// <summary>
+        /// Puts the shaders the game creates materials from into Always Included Shaders.
+        ///
+        /// A build only contains shaders something references, and nothing here references
+        /// any: every material is made at runtime through <see cref="MaterialLibrary"/>. So
+        /// they were stripped, Shader.Find returned null in the player, and the fallback chain
+        /// ended on an unlit sprite shader — which is why a build rendered flat with the far
+        /// half of the map painted over, while the Editor, where Shader.Find always succeeds,
+        /// looked correct.
+        /// </summary>
+        static void EnsureAlwaysIncludedShaders()
+        {
+            var settings = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset");
+            if (settings == null || settings.Length == 0) return;
+
+            var serialized = new SerializedObject(settings[0]);
+            var included = serialized.FindProperty("m_AlwaysIncludedShaders");
+            if (included == null) return;
+
+            bool added = false;
+
+            foreach (var name in RuntimeShaders)
+            {
+                var shader = Shader.Find(name);
+                if (shader == null) continue;
+
+                bool present = false;
+                for (int i = 0; i < included.arraySize && !present; i++)
+                    present = included.GetArrayElementAtIndex(i).objectReferenceValue == shader;
+
+                if (present) continue;
+
+                included.InsertArrayElementAtIndex(included.arraySize);
+                included.GetArrayElementAtIndex(included.arraySize - 1).objectReferenceValue = shader;
+                added = true;
+
+                Debug.Log($"[DK] Added '{name}' to Always Included Shaders so builds keep it.");
+            }
+
+            if (!added) return;
+
+            serialized.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+        }
+
+        static readonly string[] RuntimeShaders =
+        {
+            "Universal Render Pipeline/Lit",
+            "Standard",
+        };
 
         static void AssignPipeline(RenderPipelineAsset pipeline)
         {

@@ -305,6 +305,15 @@ frame", and those have nothing in common.
 load if the package is present. `MaterialLibrary` picks its shader from whichever pipeline is
 actually active, so the prototype also renders correctly on Built-in if URP setup is skipped.
 
+Building everything from code has one sharp edge, and it drew blood: a build only contains
+shaders that something references, and nothing here references any — every material is made at
+runtime. So they were stripped, `Shader.Find` returned null in the player, and the fallback
+chain ended on `Sprites/Default`, which is unlit and does not write depth. The build rendered
+flat with the far half of the map painted over by whatever drew after it, and the Editor, where
+`Shader.Find` always succeeds, looked perfect. `ProjectAutoSetup` now keeps those shaders in
+Always Included Shaders, and `MaterialLibrary` logs an error rather than quietly landing on an
+unlit fallback.
+
 **TextMeshPro fallback.** TMP Essential Resources are committed, so the HUD normally uses
 TextMeshPro. Reading `TMP_Settings` throws outright in a project that has never imported
 them, so the availability check is defensive and drops to legacy uGUI text, then to IMGUI —
