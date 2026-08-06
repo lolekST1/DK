@@ -311,6 +311,31 @@ namespace DK
             }
         }
 
+        /// <summary>
+        /// Blocks the camera actually accepted for drawing this frame. Standing but not
+        /// visible means something culled them; standing and visible means they are being
+        /// drawn and the problem is how they are shaded. Those two have no fix in common,
+        /// which is why the count is split.
+        /// </summary>
+        public int VisibleBlocks
+        {
+            get
+            {
+                if (_renderers == null) return 0;
+
+                int visible = 0;
+                for (int x = 0; x < Width; x++)
+                for (int z = 0; z < Depth; z++)
+                {
+                    var renderer = _renderers[x, 0, z];
+                    if (renderer != null && renderer.isVisible &&
+                        _blocks[x, 0, z] != null && _blocks[x, 0, z].activeSelf) visible++;
+                }
+
+                return visible;
+            }
+        }
+
         public float SurfaceHeight(int x, int z) => IsWalkable(x, z) ? 0f : BlockHeight;
     }
 }

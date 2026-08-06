@@ -3,6 +3,7 @@ using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace DK
@@ -200,7 +201,12 @@ namespace DK
             Builder.Append("  cam ").Append(Mathf.RoundToInt(_rig != null ? _rig.Distance : 0f));
             Builder.Append("  blocks ").Append(_grid.StandingBlocks).Append('/')
                    .Append(_grid.Width * _grid.Depth);
+            Builder.Append("  drawn ").Append(_grid.VisibleBlocks);
             Builder.Append("  msaa ").Append(QualitySettings.antiAliasing);
+            Builder.Append("  ").Append(GraphicsSettings.defaultRenderPipeline != null ? "URP" : "built-in");
+            Builder.Append("  shader ").Append(MaterialLibrary.LitShader != null
+                ? MaterialLibrary.LitShader.name
+                : "none");
 
             _diagnostics.Set(Builder.ToString());
         }

@@ -288,6 +288,7 @@ namespace UnityEngine
     public class Renderer : Component
     {
         public Material sharedMaterial;
+        public bool isVisible => true;
         public void GetPropertyBlock(MaterialPropertyBlock b) { }
         public void SetPropertyBlock(MaterialPropertyBlock b) { }
     }
