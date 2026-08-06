@@ -34,7 +34,7 @@ when the vault cannot cover the next tile.
 | Left mouse (hold to paint) | Apply the selected tool |
 | Right mouse (hold to paint) | Undo it: unmark while digging, sell while building |
 | WASD, arrow keys, or screen edge | Pan the camera |
-| Q / E | Rotate the camera 90° |
+| Q / E (hold) | Swing the camera round, any angle |
 | Scroll wheel | Zoom |
 
 The cursor turns green where the selected room will go and red where it will not; the HUD
@@ -101,7 +101,7 @@ Assets/Scripts/
   GridWalker.cs       Path following and turning, shared by everything that walks
   ImpAI.cs            Idle → MoveToTarget → Digging → HaulGold → ReturnToBase, one per imp
   PlayerTools.cs      Mouse picking, hover cursor, dig / build / sell tools
-  CameraRig.cs        45° rig: pan, zoom, 90° rotation, clamped to the grid
+  CameraRig.cs        45° rig: pan, zoom, free rotation, clamped to the grid
   ResourceManager.cs  Economy facade over the vaults: spend, bank, lifetime tallies
   GameHud.cs          Runtime-built Canvas: gold, tool bar, status line
   MaterialLibrary.cs  Runtime materials, pipeline-agnostic shader lookup

@@ -311,6 +311,7 @@ namespace UnityEngine
         public static bool GetMouseButton(int b) => false;
         public static float GetAxisRaw(string axis) => 0f;
         public static bool GetKeyDown(KeyCode key) => false;
+        public static bool GetKey(KeyCode key) => false;
     }
 
     public static class Time

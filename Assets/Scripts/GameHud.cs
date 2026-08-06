@@ -48,7 +48,7 @@ namespace DK
 
         float _refreshTimer;
 
-        const string Hint = "Click a tool or press 1-4   LMB paint   RMB undo   WASD / screen edge pan   Q/E rotate   Wheel zoom";
+        const string Hint = "Click a tool or press 1-4   LMB paint   RMB undo   WASD / screen edge pan   Q/E rotate (hold)   Wheel zoom";
 
         static readonly StringBuilder Builder = new StringBuilder(160);
 
