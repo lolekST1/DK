@@ -32,11 +32,18 @@ namespace DK
         readonly Line _status = new Line();
 
         /// <summary>
-        /// What the renderer and camera actually ended up with. On screen rather than in the
-        /// log because the difference between the Editor and a WebGL build has been diagnosed
-        /// from screenshots several times now, and a screenshot can carry this.
+        /// What the renderer and camera actually ended up with. Off by default and toggled
+        /// with <see cref="DiagnosticsKey"/>: it exists because the difference between the
+        /// Editor and a WebGL build was diagnosed from screenshots several times, and a
+        /// screenshot can carry this line — but it is workshop furniture, not something a
+        /// player should be reading.
         /// </summary>
         readonly Line _diagnostics = new Line();
+
+        /// <summary>Shows or hides the render diagnostics.</summary>
+        public KeyCode DiagnosticsKey = KeyCode.F1;
+
+        bool _showDiagnostics;
         readonly List<ToolButton> _toolButtons = new List<ToolButton>();
         CreatureManager _creatures;
         HeroManager _heroes;
@@ -48,7 +55,7 @@ namespace DK
 
         float _refreshTimer;
 
-        const string Hint = "Click a tool or press 1-4   LMB paint   RMB undo   WASD / screen edge pan   Q/E rotate (hold)   Wheel zoom";
+        const string Hint = "Click a tool or press 1-4   LMB paint   RMB undo   WASD / screen edge pan   Q/E rotate (hold)   Wheel zoom   F1 stats";
 
         static readonly StringBuilder Builder = new StringBuilder(160);
 
@@ -178,7 +185,14 @@ namespace DK
             // The toolbar and status line depend on mouse hover and on how much gold the imps
             // are holding, neither of which raises an event. A few refreshes a second is
             // plenty and keeps string building off the per-frame path.
-            _refreshTimer -= Time.deltaTime;
+            if (Input.GetKeyDown(DiagnosticsKey))
+            {
+                _showDiagnostics = !_showDiagnostics;
+                RefreshDiagnostics();
+            }
+
+            // Unscaled, so the HUD keeps refreshing after the run ends and the world stops.
+            _refreshTimer -= Time.unscaledDeltaTime;
             if (_refreshTimer > 0f) return;
             _refreshTimer = 0.1f;
 
@@ -193,6 +207,12 @@ namespace DK
         void RefreshDiagnostics()
         {
             if (_grid == null) return;
+
+            if (!_showDiagnostics)
+            {
+                _diagnostics.Set(string.Empty);
+                return;
+            }
 
             Builder.Length = 0;
             Builder.Append(Screen.width).Append('x').Append(Screen.height);
@@ -305,8 +325,8 @@ namespace DK
             // Nothing else is worth saying once the run is over.
             if (_director != null && _director.Finished)
                 return _director.Result == Outcome.Won
-                    ? "The Lord of the Land is dead. The dungeon is yours."
-                    : "The dungeon heart is broken. The keeper is finished.";
+                    ? "The Lord of the Land is dead. The dungeon is yours. [R] to play again."
+                    : "The dungeon heart is broken. The keeper is finished. [R] to try again.";
 
             // A raid outranks every slow problem: it is the only one with a clock on it.
             if (_heroes != null && _heroes.HeroCount > 0)

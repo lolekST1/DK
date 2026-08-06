@@ -36,6 +36,8 @@ when the vault cannot cover the next tile.
 | WASD, arrow keys, or screen edge | Pan the camera |
 | Q / E (hold) | Swing the camera round, any angle |
 | Scroll wheel | Zoom |
+| `R` | Start again, once the run has ended |
+| `F1` | Render and camera stats, for diagnosing a build |
 
 The cursor turns green where the selected room will go and red where it will not; the HUD
 status line says why. It shows one thing at a time, the most urgent first: payroll it cannot
@@ -247,7 +249,12 @@ you kill the thief in time, and it needs no new UI at all.
 **The run ends by stopping the clock.** `GameDirector` sets the timescale to zero and puts the
 result in the status line. Disabling every AI in the scene would have been the tidier-sounding
 option and would silently miss whatever gets added next; a frozen dungeon behind the verdict is
-also the right picture of what just happened. There is no restart yet — press Play again.
+also the right picture of what just happened.
+
+**Restarting is a scene reload.** Everything — managers, rooms, creatures, materials — is built
+in `GameBootstrap.Awake`, so there is no state to unwind by hand and nothing to keep in step
+with what gets added later. `R` puts the timescale back and reloads. The HUD runs on unscaled
+time so it keeps refreshing while the world is stopped.
 
 **Neither side knows the other exists.** `CreatureAI` and `HeroAI` never reference each other —
 they ask `Battlefield` for the nearest enemy and get an `ICombatant` back. One place decides

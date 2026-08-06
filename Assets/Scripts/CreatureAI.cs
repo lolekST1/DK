@@ -84,6 +84,12 @@ namespace DK
 
         static int _spawnOrder;
 
+        /// <summary>
+        /// Called when a run restarts. The counter seeds wandering, and leaving it running
+        /// across a scene reload would make two runs of the same map differ for no reason.
+        /// </summary>
+        public static void ResetSpawnOrder() => _spawnOrder = 0;
+
         static readonly Color CalmTint = new Color(1f, 1f, 1f);
         static readonly Color FuriousTint = new Color(1.6f, 0.55f, 0.45f);
 

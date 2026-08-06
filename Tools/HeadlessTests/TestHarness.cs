@@ -945,6 +945,14 @@ public static class TestHarness
         Check(fell > 0f, $"and brought it down ({fell:0.0}s)");
         Check(director.Result == Outcome.Lost, "which loses the run");
         Check(director.Finished, "and ends it");
+        Check(Time.timeScale == 0f, "the ending stops the clock");
+
+        // The reload itself needs Unity, but the state the run is left in does not: a restart
+        // that forgot the timescale would open the next run frozen, which is the one part of
+        // this worth pinning down.
+        director.Restart();
+        Check(Time.timeScale == 1f, "and restarting starts it again");
+        Check(director.Result == Outcome.Lost, "the old result stands until the scene reloads");
 
         // --- or you kill him and the dungeon is yours --------------------------
         var won = OpenGateWorld("Won", out _, out var wonHeart, out var wonHeroes);
@@ -963,6 +971,9 @@ public static class TestHarness
         DirectorUpdate.Invoke(winDirector, null);
         Check(winDirector.Result == Outcome.Won, "which wins the run");
         Check(wonHeart.Health == wonHeart.MaxHealth, "with the heart untouched");
+
+        winDirector.Restart();
+        Check(Time.timeScale == 1f, "a won run can be played again too");
     }
 
     /// <summary>A world with a heart, a hero gate, and a corridor already dug between them.</summary>
