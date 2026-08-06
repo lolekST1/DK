@@ -34,7 +34,17 @@ namespace UnityEngine
         public Vector3(float x, float y, float z) { this.x = x; this.y = y; this.z = z; }
         public float sqrMagnitude => x * x + y * y + z * z;
         public float magnitude => (float)Math.Sqrt(sqrMagnitude);
-        public Vector3 normalized => this;
+        // Actually normalises. Returning `this` made every walker crawl to a halt as it
+        // approached a waypoint — step length was scaled by the remaining distance — which
+        // is a movement bug that only ever existed in the tests.
+        public Vector3 normalized
+        {
+            get
+            {
+                float length = magnitude;
+                return length > 1e-5f ? new Vector3(x / length, y / length, z / length) : zero;
+            }
+        }
         public static Vector3 up => new Vector3(0, 1, 0);
         public static Vector3 back => new Vector3(0, 0, -1);
         public static Vector3 zero => new Vector3(0, 0, 0);
@@ -60,6 +70,7 @@ namespace UnityEngine
         public Color(float r, float g, float b) { this.r = r; this.g = g; this.b = b; a = 1f; }
         public Color(float r, float g, float b, float a) { this.r = r; this.g = g; this.b = b; this.a = a; }
         public static Color white => new Color(1, 1, 1);
+        public static Color Lerp(Color a, Color b, float t) => a;
     }
 
     public struct Bounds
@@ -78,8 +89,13 @@ namespace UnityEngine
         public static float Exp(float v) => (float)Math.Exp(v);
         public static int Max(int a, int b) => Math.Max(a, b);
         public static float Max(float a, float b) => Math.Max(a, b);
+        public static int Min(int a, int b) => Math.Min(a, b);
+        public static float Min(float a, float b) => Math.Min(a, b);
         public static int FloorToInt(float v) => (int)Math.Floor(v);
         public static float Clamp(float v, float lo, float hi) => Math.Min(hi, Math.Max(lo, v));
+        public static float Clamp01(float v) => Clamp(v, 0f, 1f);
+        public static int CeilToInt(float v) => (int)Math.Ceiling(v);
+        public static int RoundToInt(float v) => (int)Math.Round(v);
         public static float Lerp(float a, float b, float t) => a + (b - a) * t;
         public static float InverseLerp(float a, float b, float v) => 0f;
         public static float MoveTowards(float a, float b, float d) => b;
@@ -90,13 +106,22 @@ namespace UnityEngine
 
     public struct Rect
     {
-        public Rect(float x, float y, float width, float height) { }
+        public float x, y, width, height;
+
+        public Rect(float x, float y, float width, float height)
+        {
+            this.x = x; this.y = y; this.width = width; this.height = height;
+        }
+
+        public bool Contains(Vector2 point) =>
+            point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height;
     }
 
     public static class GUI
     {
         public static Color color;
         public static void Label(Rect rect, string text) { }
+        public static bool Button(Rect rect, string text) => false;
     }
 
     public struct Ray
@@ -111,9 +136,9 @@ namespace UnityEngine
         public bool Raycast(Ray ray, out float distance) { distance = 0f; return true; }
     }
 
-    public enum KeyCode { Q, E }
+    public enum KeyCode { Q, E, Escape, Alpha1, Alpha2, Alpha3, Alpha4 }
 
-    public enum PrimitiveType { Cube, Capsule, Sphere, Quad, Plane }
+    public enum PrimitiveType { Cube, Capsule, Cylinder, Sphere, Quad, Plane }
     public enum CameraClearFlags { SolidColor, Skybox }
     public enum LightType { Directional, Point, Spot }
     public enum LightShadows { None, Hard, Soft }
@@ -123,7 +148,11 @@ namespace UnityEngine
     public class Object
     {
         public string name;
-        public static void Destroy(Object o) { if (o is Component c && c.gameObject != null) c.gameObject.Remove(c); }
+        public static void Destroy(Object o)
+        {
+            if (o is GameObject go) go.DestroySelf();
+            else if (o is Component c && c.gameObject != null) c.gameObject.Remove(c);
+        }
         public override string ToString() => name ?? GetType().Name;
     }
 
@@ -145,6 +174,7 @@ namespace UnityEngine
         public Quaternion rotation, localRotation;
         public Transform parent;
         public void SetParent(Transform p, bool worldPositionStays) { parent = p; }
+        public void Rotate(float x, float y, float z) { }
     }
 
     public class RectTransform : Transform
@@ -176,6 +206,20 @@ namespace UnityEngine
         public void SetActive(bool value) { activeSelf = value; }
 
         internal void Remove(Component c) { _components.Remove(c); }
+
+        /// <summary>Runs OnDestroy on every component, the way Unity does when an object dies.</summary>
+        internal void DestroySelf()
+        {
+            for (int i = _components.Count - 1; i >= 0; i--)
+            {
+                var method = _components[i].GetType().GetMethod("OnDestroy",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic);
+                method?.Invoke(_components[i], null);
+            }
+
+            _components.Clear();
+        }
 
         T Attach<T>(T component) where T : Component
         {
@@ -216,7 +260,7 @@ namespace UnityEngine
     {
         public CameraClearFlags clearFlags;
         public Color backgroundColor;
-        public float nearClipPlane, farClipPlane, fieldOfView;
+        public float nearClipPlane, farClipPlane, fieldOfView, aspect;
         public Ray ScreenPointToRay(Vector3 point) => default;
     }
     public class Light : Component
@@ -244,6 +288,7 @@ namespace UnityEngine
     public class Renderer : Component
     {
         public Material sharedMaterial;
+        public bool isVisible => true;
         public void GetPropertyBlock(MaterialPropertyBlock b) { }
         public void SetPropertyBlock(MaterialPropertyBlock b) { }
     }
@@ -266,11 +311,17 @@ namespace UnityEngine
         public static bool GetMouseButton(int b) => false;
         public static float GetAxisRaw(string axis) => 0f;
         public static bool GetKeyDown(KeyCode key) => false;
+        public static bool GetKey(KeyCode key) => false;
     }
 
-    public static class Time { public static float deltaTime = 1f / 60f; }
-    public static class Screen { public static int width => 0; public static int height => 0; }
-    public static class Application { public static bool isFocused => true; public static bool isBatchMode => false; }
+    public static class Time
+    {
+        public static float deltaTime = 1f / 60f;
+        public static float timeScale = 1f;
+    }
+    public static class Screen { public static int width => 0; public static int height => 0; public static float dpi => 0f; }
+    public static class Application { public static bool isFocused => true;
+        public static string buildGUID => ""; public static bool isBatchMode => false; }
     public static class Debug
     {
         public static void Log(object m) { }
@@ -284,7 +335,16 @@ namespace UnityEngine
         public static Color ambientLight;
     }
 
-    public static class QualitySettings { public static Rendering.RenderPipelineAsset renderPipeline; }
+    public static class QualitySettings
+    {
+        public static Rendering.RenderPipelineAsset renderPipeline;
+        public static int antiAliasing;
+        public static float shadowDistance;
+        public static int pixelLightCount;
+        public static string[] names => new string[0];
+        public static void SetQualityLevel(int level, bool applyExpensiveChanges) { }
+        public static int GetQualityLevel() => 0;
+    }
 
     [AttributeUsage(AttributeTargets.Field)] public class HeaderAttribute : Attribute { public HeaderAttribute(string h) { } }
     [AttributeUsage(AttributeTargets.Field)] public class RangeAttribute : Attribute { public RangeAttribute(float a, float b) { } }
@@ -321,7 +381,7 @@ namespace UnityEngine.SceneManagement
 
 namespace UnityEngine.UI
 {
-    public class Graphic : Component { public Color color; }
+    public class Graphic : Component { public Color color; public bool raycastTarget = true; }
     public class Text : Graphic
     {
         public Font font;
@@ -330,6 +390,24 @@ namespace UnityEngine.UI
         public TextAnchor alignment;
     }
     public class Canvas : Component { public RenderMode renderMode; }
+
+    public class GraphicRaycaster : Component { }
+
+    public class Image : Graphic { }
+
+    public class Selectable : Component
+    {
+        public enum Transition { None, ColorTint, SpriteSwap, Animation }
+
+        public bool interactable = true;
+        public Transition transition;
+        public Graphic targetGraphic;
+    }
+
+    public class Button : Selectable
+    {
+        public readonly UnityEngine.Events.UnityEvent onClick = new UnityEngine.Events.UnityEvent();
+    }
     public class CanvasScaler : Component
     {
         public enum ScaleMode { ConstantPixelSize, ScaleWithScreenSize }
@@ -355,4 +433,30 @@ namespace TMPro
         public string text;
         public TextAlignmentOptions alignment;
     }
+}
+
+namespace UnityEngine.Events
+{
+    public delegate void UnityAction();
+
+    public class UnityEvent
+    {
+        readonly System.Collections.Generic.List<UnityAction> _listeners =
+            new System.Collections.Generic.List<UnityAction>();
+
+        public void AddListener(UnityAction call) { _listeners.Add(call); }
+        public void RemoveAllListeners() { _listeners.Clear(); }
+        public void Invoke() { for (int i = 0; i < _listeners.Count; i++) _listeners[i](); }
+    }
+}
+
+namespace UnityEngine.EventSystems
+{
+    public class EventSystem : UnityEngine.Component
+    {
+        public static EventSystem current;
+        public bool IsPointerOverGameObject() => false;
+    }
+
+    public class StandaloneInputModule : UnityEngine.Component { }
 }

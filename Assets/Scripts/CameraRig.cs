@@ -4,15 +4,18 @@ namespace DK
 {
     /// <summary>
     /// Fixed-pitch strategy camera: WASD/arrows or screen-edge to pan, wheel to zoom,
-    /// Q/E to swing the rig around in 90° steps, pivot clamped to the grid so you cannot
+    /// Q/E to swing the rig around to any angle, pivot clamped to the grid so you cannot
     /// lose the dungeon off-screen.
     /// </summary>
     public class CameraRig : MonoBehaviour
     {
         public float PitchDegrees = 45f;
         public float YawDegrees = 0f;
-        public float RotationStepDegrees = 90f;
-        public float RotationSpeed = 9f;
+        /// <summary>Degrees per second while Q or E is held.</summary>
+        public float RotationDegreesPerSecond = 100f;
+
+        /// <summary>How quickly the rig catches up to the yaw the input has asked for.</summary>
+        public float RotationSpeed = 14f;
         public float PanSpeed = 12f;
         public float EdgePanMargin = 14f;
         public float ZoomSpeed = 12f;
@@ -31,6 +34,9 @@ namespace DK
         Camera _camera;
         Bounds _panBounds;
         float _distance = 22f;
+
+        /// <summary>How far back the camera is sitting right now.</summary>
+        public float Distance => _distance;
         float _targetYaw;
         float _currentYaw;
         float _sunPitch = 50f;
@@ -43,6 +49,14 @@ namespace DK
             var center = grid.Center;
             var size = new Vector3(grid.Width * GridManager.TileSize, 0f, grid.Depth * GridManager.TileSize);
             _panBounds = new Bounds(center, size);
+
+            // Far enough out to hold the whole grid in frame at this pitch, whatever size it
+            // is, and starting there rather than part way in. A ground square of side S needs
+            // roughly S * 1.4 of camera distance at 45 degrees and a 55 degree field of view;
+            // the ceiling is well past that so there is somewhere left to pull back to.
+            float span = Mathf.Max(size.x, size.z);
+            MaxDistance = Mathf.Max(MaxDistance, span * 2.0f);
+            _distance = Mathf.Clamp(span * 1.4f, MinDistance, MaxDistance);
 
             _targetYaw = YawDegrees;
             _currentYaw = YawDegrees;
@@ -70,8 +84,14 @@ namespace DK
 
         void HandleRotation(float dt)
         {
-            if (Input.GetKeyDown(KeyCode.Q)) _targetYaw -= RotationStepDegrees;
-            if (Input.GetKeyDown(KeyCode.E)) _targetYaw += RotationStepDegrees;
+            // Held, not tapped. Ninety-degree steps kept the dungeon square to the screen,
+            // which is tidy and also means four fixed views of a map you are trying to read
+            // from every side. Any angle is worth more than tidiness here.
+            float turn = 0f;
+            if (Input.GetKey(KeyCode.Q)) turn -= 1f;
+            if (Input.GetKey(KeyCode.E)) turn += 1f;
+
+            _targetYaw += turn * RotationDegreesPerSecond * dt;
 
             if (Mathf.Abs(Mathf.DeltaAngle(_currentYaw, _targetYaw)) < 0.01f)
             {

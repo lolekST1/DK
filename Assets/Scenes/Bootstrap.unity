@@ -83,13 +83,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c3bbd15166af4a50f89264d4ca1c8da9, type: 3}
   m_Name:
   m_EditorClassIdentifier:
-  GridWidth: 20
-  GridDepth: 20
-  Seed: 1337
-  GoldChance: 0.1
-  StartingChamberRadius: 2
-  ImpMoveSpeed: 3
-  ImpDigDuration: 1.2
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

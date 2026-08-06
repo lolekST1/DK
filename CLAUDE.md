@@ -71,7 +71,6 @@ working independently. Set up at project init:
    - Just an int gold counter + a basic on-screen UI text (Canvas + TextMeshPro)
 
 ## Explicitly out of scope (do not build yet)
-- Multiple imps / creature spawning
 - Room building, walls, dungeon heart
 - Combat, enemies, hero incursions
 - Save/load
@@ -84,6 +83,82 @@ working independently. Set up at project init:
 - No manual Inspector wiring required to run the scene from a fresh clone
   (aside from opening the one bootstrap scene).
 - Produces a working WebGL build in `Builds/WebGL/`.
+
+## Beyond the prototype
+The vertical slice above is built, verified in-Editor and as a WebGL build, and merged.
+The scope list above is the original brief and is kept as written; what actually shipped has
+moved past it in places, recorded here.
+
+Landed since:
+- Camera rotation (Q/E) with the sun following the rig.
+- Multiple imps sharing one dig queue via per-tile claims in `GridManager`.
+- **Rooms and the gold economy.** A `RoomManager` layer on top of terrain: a 3×3 dungeon
+  heart placed at bootstrap, player-built treasuries and lairs painted with the mouse and
+  paid for out of stored gold, and selling for half back. `RoomCatalog` holds every cost and
+  capacity, so balancing is one file.
+- **Gold is hauled, not credited.** Mined gold is carried by the imp to a vault tile with
+  free space; `ImpAI` gained a `HaulGold` state. An imp with nowhere to bank waits, then
+  spills. `ResourceManager` is now a facade over the vaults rather than an int of its own,
+  so `AddGold(int)` from the brief no longer exists — use `Bank(cell, amount)`.
+- **Lairs.** Creatures claim a lair tile unprompted. Imps do not sleep and never take one:
+  sharing the pool meant a crew of six swallowed the first six lairs a player built, and the
+  portal then reported no free lair with nine of them on the map.
+- **Mined gold falls on the floor, as in the original.** `LooseGold` owns the piles, with
+  per-pile claims; `ImpAI` gained a `FetchGold` state that runs *after* digging, so imps clear
+  rock first and collect only when they have no dig work left. `AddGold`-style crediting and
+  mid-dig hauling are both gone.
+- **The portal and its creatures.** A `Portal` room the map places in a sealed cavern, plus
+  `CreatureManager` (arrivals, payday, departures) and `CreatureAI` (sleep and wage needs).
+  Arrivals are gated on a dug route to the portal and a free lair; unpaid creatures redden
+  and walk back out. `CreatureCatalog` holds the balance, mirroring `RoomCatalog`.
+- Two renames as their jobs widened: `TileDigger` → `PlayerTools` (dig, build and sell
+  tools), `GoldHud` → `GameHud` (gold, tool bar, status line).
+
+Deliberately still simplified: dug floor is owned immediately, with no per-tile claiming
+step for the imps — see the design notes in `README.md`.
+
+`GridWalker` owns path following and turning for everything that walks the grid.
+`CreatureAI` uses it; `ImpAI` deliberately does not, because its route selection commits a
+tile claim in the same step and is easier to read as one piece.
+
+- **Combat and hero raids.** A `HeroGate` room sealed in rock like the portal, `HeroManager`
+  (raid clock, roster, loot stolen and recovered) and `HeroAI` (advance, rob a vault tile,
+  fight, escape). `Battlefield` + `ICombatant` keep creatures and heroes from referencing each
+  other. Heroes steal rather than destroy, so there is still no game-over state.
+
+- **A run you can win or lose.** `DungeonHeart` is an `ICombatant` structure with health;
+  `ICombatant.IsStructure` keeps ordinary raiders from attacking buildings. `HeroKind.Lord`
+  ignores the vault and besieges the heart, and `HeroManager` sends him after
+  `WavesBeforeLord` ordinary raids. `GameDirector` watches for either ending and stops the
+  clock.
+
+- **A last stand that scales with the garrison.** Being hit re-engages the attacker, and that
+  used to restart the swing clock, so whoever was outnumbered got a free swing per blow taken —
+  the Lord's damage output grew with the size of the crowd fighting him and he could clear a
+  full roster alone. Dead creatures also went on swinging for the frame before the manager
+  cleared them, which is what made the harness's last-stand matrix agree with the old numbers.
+  With both fixed, the Lord is tuned against the crowd that actually arrives (1100 health):
+  four or five defenders lose the heart, six or seven hold it with losses, ten walk away clean.
+- **Wounds close in a lair.** `CreatureCatalog.HealPerSecond`, spent in `CreatureState.Sleeping`
+  and nowhere else. A creature under half health goes to bed unprompted. Before this, damage was
+  permanent and the garrison was worn down over the knight waves with no way back.
+
+Known gap: there is no restart after the run ends — the timescale stays at zero until the
+scene is reloaded.
+
+Balance figures worth knowing: a full roster's wages have to stay under what a crew of imps
+can mine, and `PayrollBalanceChecks` in the harness asserts it. `GameBootstrap`'s tunables are
+`[NonSerialized]` on purpose — a public field would be copied into `Bootstrap.unity` and the
+scene would then silently outrank the code.
+
+Natural next parts, roughly in dependency order: a restart, which the endings now need; more
+creature and hero kinds, which both catalogs are already shaped for; then verticality, which
+the 3D tile array is already shaped for.
+
+Watch out for: materials are created at runtime, so nothing in the project references a
+shader, so a build strips them all. `ProjectAutoSetup` keeps them in Always Included Shaders.
+Without that, `Shader.Find` returns null in the player and the game renders unlit — in the
+Editor everything looks right, which is what makes it expensive to find.
 
 ## Workflow
 Follow the usual approach: work independently, self-fix compile/runtime

@@ -34,6 +34,11 @@ namespace DK.EditorTools
             EnsureSerializationSettings();
             EnsureBootstrapScene();
             EnsureRenderPipeline();
+            EnsureAlwaysIncludedShaders();
+
+            // Unconditionally, not just when the pipeline asset is first created: the asset
+            // usually already exists by the time anyone notices the build looks wrong.
+            TuneRendering(GraphicsSettings.defaultRenderPipeline);
         }
 
         [MenuItem("Dungeon Keeper Prototype/Re-run Project Setup")]
@@ -214,11 +219,119 @@ namespace DK.EditorTools
             }
         }
 
+        /// <summary>
+        /// Puts the shaders the game creates materials from into Always Included Shaders.
+        ///
+        /// A build only contains shaders something references, and nothing here references
+        /// any: every material is made at runtime through <see cref="MaterialLibrary"/>. So
+        /// they were stripped, Shader.Find returned null in the player, and the fallback chain
+        /// ended on an unlit sprite shader — which is why a build rendered flat with the far
+        /// half of the map painted over, while the Editor, where Shader.Find always succeeds,
+        /// looked correct.
+        /// </summary>
+        static void EnsureAlwaysIncludedShaders()
+        {
+            var settings = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset");
+            if (settings == null || settings.Length == 0) return;
+
+            var serialized = new SerializedObject(settings[0]);
+            var included = serialized.FindProperty("m_AlwaysIncludedShaders");
+            if (included == null) return;
+
+            bool added = false;
+
+            foreach (var name in RuntimeShaders)
+            {
+                var shader = Shader.Find(name);
+                if (shader == null) continue;
+
+                bool present = false;
+                for (int i = 0; i < included.arraySize && !present; i++)
+                    present = included.GetArrayElementAtIndex(i).objectReferenceValue == shader;
+
+                if (present) continue;
+
+                included.InsertArrayElementAtIndex(included.arraySize);
+                included.GetArrayElementAtIndex(included.arraySize - 1).objectReferenceValue = shader;
+                added = true;
+
+                Debug.Log($"[DK] Added '{name}' to Always Included Shaders so builds keep it.");
+            }
+
+            if (!added) return;
+
+            serialized.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+        }
+
+        static readonly string[] RuntimeShaders =
+        {
+            "Universal Render Pipeline/Lit",
+            "Standard",
+        };
+
         static void AssignPipeline(RenderPipelineAsset pipeline)
         {
             GraphicsSettings.defaultRenderPipeline = pipeline;
             QualitySettings.renderPipeline = pipeline;
+            TuneRendering(pipeline);
             AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// A URP asset is created with multisampling off and 50 metres of shadow distance,
+        /// which is a fraction of this map. The Editor's Game view hides both — it is usually
+        /// looking at a small part of the dungeon from close up — and a build does not: block
+        /// edges crawl, and everything past the shadow distance lights differently from
+        /// everything inside it, which reads as only part of the map being lit.
+        ///
+        /// Set through reflection like the rest of the URP handling here, so the project still
+        /// compiles and runs with the package absent.
+        /// </summary>
+        public static void TuneRendering(RenderPipelineAsset pipeline)
+        {
+            // Every level, not just the active one. These setters write to whichever quality
+            // level is current, and a player build uses the level configured for its platform
+            // — usually not the one the Editor happens to be sitting on. Setting only the
+            // active level is why the build still looked worse than the Game view.
+            int active = QualitySettings.GetQualityLevel();
+            int levels = QualitySettings.names.Length;
+
+            for (int i = 0; i < levels; i++)
+            {
+                QualitySettings.SetQualityLevel(i, false);
+                QualitySettings.antiAliasing = 4;
+                QualitySettings.shadowDistance = ShadowDistance;
+                QualitySettings.pixelLightCount = 4;
+            }
+
+            if (levels > 0) QualitySettings.SetQualityLevel(active, false);
+
+            if (pipeline == null) return;
+
+            TrySet(pipeline, "msaaSampleCount", 4);
+            TrySet(pipeline, "shadowDistance", ShadowDistance);
+            TrySet(pipeline, "shadowCascadeCount", 4);
+        }
+
+        /// <summary>Long enough to cover a 32x32 grid seen from the far end of the zoom.</summary>
+        const float ShadowDistance = 160f;
+
+        static void TrySet(object target, string property, object value)
+        {
+            var info = target.GetType().GetProperty(property,
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.SetProperty);
+
+            if (info == null || !info.CanWrite) return;
+
+            try
+            {
+                info.SetValue(target, value);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[DK] Could not set {property} on the render pipeline asset ({e.Message}).");
+            }
         }
 
         static Type FindType(string fullName)

@@ -15,6 +15,9 @@ namespace DK
         public const float BlockHeight = 1f;
         public const int GoldPerSeam = 50;
 
+        /// <summary>How much of its tile a block fills. The remainder is the seam between them.</summary>
+        public const float BlockInset = 0.96f;
+
         // Layout is a 3D array with a single Y layer for now; verticality is out of scope,
         // but the storage shape means adding layers later does not change the data model.
         public int Width { get; private set; } = 20;
@@ -29,6 +32,10 @@ namespace DK
         Renderer[,,] _renderers;
 
         readonly HashSet<Vector2Int> _queued = new HashSet<Vector2Int>();
+
+        // Which digger has taken responsibility for which queued tile. Without this, every
+        // idle imp picks the same nearest tile and they all walk to it together.
+        readonly Dictionary<Vector2Int, object> _claims = new Dictionary<Vector2Int, object>();
         MaterialPropertyBlock _propertyBlock;
 
         Material _blockMaterial;
@@ -104,7 +111,12 @@ namespace DK
                 // Picking is done with a maths plane raycast, so colliders are dead weight.
                 Destroy(block.GetComponent<Collider>());
                 block.transform.SetParent(blocksRoot, false);
-                block.transform.localScale = new Vector3(TileSize, BlockHeight, TileSize);
+                // Slightly under a full tile, so the dark floor shows through as a seam and
+                // the rock reads as blocks. With cast shadows off there is nothing else to
+                // separate one block top from the next: they share a normal and a colour, and
+                // a field of them came out as one flat sheet.
+                block.transform.localScale = new Vector3(TileSize * BlockInset, BlockHeight,
+                                                         TileSize * BlockInset);
                 block.transform.localPosition = CellToWorld(x, z) + Vector3.up * (BlockHeight * 0.5f);
 
                 var renderer = block.GetComponent<Renderer>();
@@ -113,6 +125,27 @@ namespace DK
                 _blocks[x, 0, z] = block;
                 _renderers[x, 0, z] = renderer;
                 ApplyTint(x, z);
+            }
+        }
+
+        /// <summary>
+        /// Digs out a square of tiles immediately, with no queue and no imp. Used for the
+        /// places the map starts with rather than the ones the player earns: the opening
+        /// chamber and the portal cavern.
+        /// </summary>
+        public void CarveChamber(Vector2Int centre, int radius)
+        {
+            for (int x = centre.x - radius; x <= centre.x + radius; x++)
+            for (int z = centre.y - radius; z <= centre.y + radius; z++)
+            {
+                if (!InBounds(x, z)) continue;
+
+                _states[x, 0, z] = TileState.Dug;
+                _marked[x, 0, z] = false;
+                _queued.Remove(new Vector2Int(x, z));
+                _claims.Remove(new Vector2Int(x, z));
+                if (_blocks[x, 0, z] != null) _blocks[x, 0, z].SetActive(false);
+                TileChanged?.Invoke(x, z);
             }
         }
 
@@ -148,6 +181,10 @@ namespace DK
 
         public bool IsMarkedForDigging(int x, int z) => InBounds(x, z) && _marked[x, 0, z];
 
+        /// <summary>True when some other digger has already taken this tile.</summary>
+        public bool IsClaimedByOther(Vector2Int cell, object digger) =>
+            _claims.TryGetValue(cell, out var holder) && !ReferenceEquals(holder, digger);
+
         public Vector3 CellToWorld(int x, int z) =>
             new Vector3((x + 0.5f) * TileSize, 0f, (z + 0.5f) * TileSize);
 
@@ -179,9 +216,31 @@ namespace DK
 
             _marked[x, 0, z] = false;
             _queued.Remove(new Vector2Int(x, z));
+            _claims.Remove(new Vector2Int(x, z));
             ApplyTint(x, z);
             TileChanged?.Invoke(x, z);
             return true;
+        }
+
+        /// <summary>
+        /// Takes responsibility for digging a queued tile. Returns false when another digger
+        /// holds it, or when it is no longer queued.
+        /// </summary>
+        public bool TryClaimTile(Vector2Int cell, object digger)
+        {
+            if (!IsDiggable(cell.x, cell.y) || !IsMarkedForDigging(cell.x, cell.y)) return false;
+
+            if (_claims.TryGetValue(cell, out var holder)) return ReferenceEquals(holder, digger);
+
+            _claims[cell] = digger;
+            return true;
+        }
+
+        /// <summary>Gives a claimed tile back. Claims held by others are left alone.</summary>
+        public void ReleaseTile(Vector2Int cell, object digger)
+        {
+            if (_claims.TryGetValue(cell, out var holder) && ReferenceEquals(holder, digger))
+                _claims.Remove(cell);
         }
 
         /// <summary>Digs a tile out. Returns the gold awarded (0 for plain rock).</summary>
@@ -194,6 +253,7 @@ namespace DK
             _states[x, 0, z] = TileState.Dug;
             _marked[x, 0, z] = false;
             _queued.Remove(new Vector2Int(x, z));
+            _claims.Remove(new Vector2Int(x, z));
             if (_blocks[x, 0, z] != null) _blocks[x, 0, z].SetActive(false);
 
             TileChanged?.Invoke(x, z);
@@ -201,6 +261,14 @@ namespace DK
         }
 
         // ---------------------------------------------------------------- visuals
+
+        /// <summary>Deterministic per-tile brightness, so the same map always looks the same.</summary>
+        static float CellShade(int x, int z)
+        {
+            int hash = (x * 73856093) ^ (z * 19349663);
+            hash = (hash ^ (hash >> 13)) * 1274126177;
+            return 0.94f + ((hash >> 16) & 0xFF) / 255f * 0.12f;
+        }
 
         void ApplyTint(int x, int z)
         {
@@ -212,12 +280,62 @@ namespace DK
                 ? (gold ? MarkedGoldColor : MarkedRockColor)
                 : (gold ? GoldColor : RockColor);
 
+            // A few per cent of brightness either way, fixed per tile. Enough that a wall of
+            // rock has texture rather than being one colour across a third of the screen.
+            float shade = CellShade(x, z);
+            color = new Color(color.r * shade, color.g * shade, color.b * shade, color.a);
+
             renderer.GetPropertyBlock(_propertyBlock);
             MaterialLibrary.SetColor(_propertyBlock, color);
             renderer.SetPropertyBlock(_propertyBlock);
         }
 
         /// <summary>Top surface height of a tile, used for placing the hover cursor.</summary>
+        /// <summary>
+        /// Blocks currently standing. Counted rather than tracked because it exists to answer
+        /// one question when a build looks wrong: is the far half of the map missing, or just
+        /// out of frame?
+        /// </summary>
+        public int StandingBlocks
+        {
+            get
+            {
+                if (_blocks == null) return 0;
+
+                int standing = 0;
+                for (int x = 0; x < Width; x++)
+                for (int z = 0; z < Depth; z++)
+                    if (_blocks[x, 0, z] != null && _blocks[x, 0, z].activeSelf) standing++;
+
+                return standing;
+            }
+        }
+
+        /// <summary>
+        /// Blocks the camera actually accepted for drawing this frame. Standing but not
+        /// visible means something culled them; standing and visible means they are being
+        /// drawn and the problem is how they are shaded. Those two have no fix in common,
+        /// which is why the count is split.
+        /// </summary>
+        public int VisibleBlocks
+        {
+            get
+            {
+                if (_renderers == null) return 0;
+
+                int visible = 0;
+                for (int x = 0; x < Width; x++)
+                for (int z = 0; z < Depth; z++)
+                {
+                    var renderer = _renderers[x, 0, z];
+                    if (renderer != null && renderer.isVisible &&
+                        _blocks[x, 0, z] != null && _blocks[x, 0, z].activeSelf) visible++;
+                }
+
+                return visible;
+            }
+        }
+
         public float SurfaceHeight(int x, int z) => IsWalkable(x, z) ? 0f : BlockHeight;
     }
 }

@@ -34,8 +34,24 @@ namespace UnityEditor
 
     public class SceneAsset : UnityEngine.Object { }
 
+    public class SerializedProperty
+    {
+        public int arraySize;
+        public UnityEngine.Object objectReferenceValue;
+        public SerializedProperty GetArrayElementAtIndex(int index) => this;
+        public void InsertArrayElementAtIndex(int index) { }
+    }
+
+    public class SerializedObject
+    {
+        public SerializedObject(UnityEngine.Object target) { }
+        public SerializedProperty FindProperty(string path) => null;
+        public bool ApplyModifiedProperties() => false;
+    }
+
     public static class AssetDatabase
     {
+        public static UnityEngine.Object[] LoadAllAssetsAtPath(string path) => new UnityEngine.Object[0];
         public static T LoadAssetAtPath<T>(string path) where T : UnityEngine.Object => null;
         public static bool IsValidFolder(string path) => false;
         public static string CreateFolder(string parent, string name) => "";
