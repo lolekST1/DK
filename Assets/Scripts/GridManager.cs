@@ -291,6 +291,26 @@ namespace DK
         }
 
         /// <summary>Top surface height of a tile, used for placing the hover cursor.</summary>
+        /// <summary>
+        /// Blocks currently standing. Counted rather than tracked because it exists to answer
+        /// one question when a build looks wrong: is the far half of the map missing, or just
+        /// out of frame?
+        /// </summary>
+        public int StandingBlocks
+        {
+            get
+            {
+                if (_blocks == null) return 0;
+
+                int standing = 0;
+                for (int x = 0; x < Width; x++)
+                for (int z = 0; z < Depth; z++)
+                    if (_blocks[x, 0, z] != null && _blocks[x, 0, z].activeSelf) standing++;
+
+                return standing;
+            }
+        }
+
         public float SurfaceHeight(int x, int z) => IsWalkable(x, z) ? 0f : BlockHeight;
     }
 }

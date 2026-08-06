@@ -29,11 +29,21 @@ namespace DK
         HudMode _mode;
         readonly Line _gold = new Line();
         readonly Line _status = new Line();
+
+        /// <summary>
+        /// What the renderer and camera actually ended up with. On screen rather than in the
+        /// log because the difference between the Editor and a WebGL build has been diagnosed
+        /// from screenshots several times now, and a screenshot can carry this.
+        /// </summary>
+        readonly Line _diagnostics = new Line();
         readonly List<ToolButton> _toolButtons = new List<ToolButton>();
         CreatureManager _creatures;
         HeroManager _heroes;
         DungeonHeart _heart;
         GameDirector _director;
+        GridManager _grid;
+        CameraRig _rig;
+        Camera _camera;
 
         float _refreshTimer;
 
@@ -98,8 +108,12 @@ namespace DK
 
         public void Configure(ResourceManager resources, RoomManager rooms, PlayerTools tools,
                               IReadOnlyList<ImpAI> imps, CreatureManager creatures,
-                              HeroManager heroes, DungeonHeart heart, GameDirector director)
+                              HeroManager heroes, DungeonHeart heart, GameDirector director,
+                              GridManager grid, CameraRig rig, Camera camera)
         {
+            _grid = grid;
+            _rig = rig;
+            _camera = camera;
             _heroes = heroes;
             _heart = heart;
             _director = director;
@@ -130,6 +144,7 @@ namespace DK
             RefreshGold();
             RefreshToolbar();
             RefreshStatus();
+            RefreshDiagnostics();
         }
 
         void OnDestroy()
@@ -169,9 +184,26 @@ namespace DK
             RefreshGold();
             RefreshToolbar();
             RefreshStatus();
+            RefreshDiagnostics();
         }
 
         // ---------------------------------------------------------------- content
+
+        void RefreshDiagnostics()
+        {
+            if (_grid == null) return;
+
+            Builder.Length = 0;
+            Builder.Append(Screen.width).Append('x').Append(Screen.height);
+            Builder.Append("  fov ").Append(Mathf.RoundToInt(_camera != null ? _camera.fieldOfView : 0f));
+            Builder.Append("  aspect ").Append((_camera != null ? _camera.aspect : 0f).ToString("0.00"));
+            Builder.Append("  cam ").Append(Mathf.RoundToInt(_rig != null ? _rig.Distance : 0f));
+            Builder.Append("  blocks ").Append(_grid.StandingBlocks).Append('/')
+                   .Append(_grid.Width * _grid.Depth);
+            Builder.Append("  msaa ").Append(QualitySettings.antiAliasing);
+
+            _diagnostics.Set(Builder.ToString());
+        }
 
         void RefreshGold()
         {
@@ -391,6 +423,8 @@ namespace DK
             GUI.Label(new Rect(18f, 74f, 1200f, 30f), _status.Value);
             GUI.color = new Color(0.85f, 0.85f, 0.85f, 0.8f);
             GUI.Label(new Rect(18f, 98f, 1200f, 30f), Hint);
+            GUI.color = new Color(0.55f, 0.60f, 0.70f, 0.85f);
+            GUI.Label(new Rect(18f, 120f, 1200f, 30f), _diagnostics.Value);
             GUI.color = Color.white;
         }
 
@@ -446,6 +480,9 @@ namespace DK
             var hint = new Line();
             BuildLine(canvas, hint, "Hint Label", -196f, 44f, 24f, 20, new Color(0.85f, 0.85f, 0.85f, 0.8f));
             hint.Set(Hint);
+
+            BuildLine(canvas, _diagnostics, "Diagnostics Label", -228f, 44f, 22f, 18,
+                      new Color(0.55f, 0.60f, 0.70f, 0.85f));
         }
 
         /// <summary>

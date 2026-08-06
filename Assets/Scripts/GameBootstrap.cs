@@ -82,7 +82,7 @@ namespace DK
 
             Imps = CreateImps();
             Tools = CreatePlayerTools(camera);
-            CreateHud();
+            CreateHud(camera);
 
             ReportRendering();
         }
@@ -363,12 +363,12 @@ namespace DK
             return tools;
         }
 
-        void CreateHud()
+        void CreateHud(Camera camera)
         {
             var go = new GameObject("HUD");
             go.transform.SetParent(transform, false);
             go.AddComponent<GameHud>().Configure(Economy, Rooms, Tools, Imps, Creatures, Heroes,
-                                                 Heart, Director);
+                                                 Heart, Director, Grid, Rig, camera);
         }
     }
 }

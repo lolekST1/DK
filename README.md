@@ -294,8 +294,12 @@ colour and by the shading difference between top and side faces, so cast shadows
 little and cost a whole class of platform-dependent breakage.
 
 `GameBootstrap` logs one line at startup with the quality level, MSAA, shadow distance,
-pipeline and canvas size. In a build that goes to the browser console, which is the only way to
-tell a setting that never applied from one that applied and did not help.
+pipeline and canvas size, and the HUD carries a shorter version on screen: canvas size, field
+of view, aspect, camera distance, standing blocks and MSAA. In a build the log goes to the
+browser console, but the on-screen line travels in a screenshot — which is how differences
+between the Editor and a WebGL build actually get reported. The block count is the one that
+matters most: it separates "the far half of the map is not drawn" from "the far half is out of
+frame", and those have nothing in common.
 
 **Pipeline-agnostic rendering.** `ProjectAutoSetup` creates and assigns a URP asset on first
 load if the package is present. `MaterialLibrary` picks its shader from whichever pipeline is

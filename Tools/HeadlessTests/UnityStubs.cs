@@ -95,6 +95,7 @@ namespace UnityEngine
         public static float Clamp(float v, float lo, float hi) => Math.Min(hi, Math.Max(lo, v));
         public static float Clamp01(float v) => Clamp(v, 0f, 1f);
         public static int CeilToInt(float v) => (int)Math.Ceiling(v);
+        public static int RoundToInt(float v) => (int)Math.Round(v);
         public static float Lerp(float a, float b, float t) => a + (b - a) * t;
         public static float InverseLerp(float a, float b, float v) => 0f;
         public static float MoveTowards(float a, float b, float d) => b;
@@ -259,7 +260,7 @@ namespace UnityEngine
     {
         public CameraClearFlags clearFlags;
         public Color backgroundColor;
-        public float nearClipPlane, farClipPlane, fieldOfView;
+        public float nearClipPlane, farClipPlane, fieldOfView, aspect;
         public Ray ScreenPointToRay(Vector3 point) => default;
     }
     public class Light : Component

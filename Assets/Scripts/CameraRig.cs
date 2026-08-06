@@ -31,6 +31,9 @@ namespace DK
         Camera _camera;
         Bounds _panBounds;
         float _distance = 22f;
+
+        /// <summary>How far back the camera is sitting right now.</summary>
+        public float Distance => _distance;
         float _targetYaw;
         float _currentYaw;
         float _sunPitch = 50f;
