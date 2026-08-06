@@ -30,6 +30,13 @@ namespace DK
         /// <summary>0 = fresh, 1 = has to sleep.</summary>
         public float Fatigue { get; private set; }
 
+        /// <summary>
+        /// True while it wants its lair: tired, or hurt badly enough to go and mend. Wounds
+        /// only close in a lair, so a beaten-up garrison heading to bed between raids is the
+        /// dungeon repairing itself.
+        /// </summary>
+        public bool WantsRest => Fatigue >= 1f || Health * 2 <= _stats.Health;
+
         /// <summary>0 = content, 1 = walking out of the portal.</summary>
         public float Anger { get; private set; }
 
@@ -72,6 +79,7 @@ namespace DK
         float _bodyBaseY;
         float _swingTimer;
         float _chaseRepath;
+        float _mendPool;
         int _wanderSeed;
 
         static int _spawnOrder;
@@ -161,6 +169,11 @@ namespace DK
         {
             if (_grid == null) return;
 
+            // A dead creature stops on the spot, the way HeroAI does. The manager clears it
+            // out on its next pass, and Unity's Destroy only takes effect at the end of the
+            // frame — without this it keeps swinging from beyond the grave in between.
+            if (!IsAlive) return;
+
             float dt = Time.deltaTime;
 
             UpdateNeeds(dt);
@@ -237,7 +250,7 @@ namespace DK
             // Reading home is also what moves a creature into a lair the player just built.
             var home = HomeCell;
 
-            if (Fatigue >= 1f && HasLair)
+            if (WantsRest && HasLair)
             {
                 if (CurrentCell == home)
                 {
@@ -275,19 +288,38 @@ namespace DK
             // Worth waking up for.
             if (TryFindFight()) return;
 
+            Mend(dt);
+
             // A lair sold out from under it wakes it up, which is the player's problem.
-            if (!HasLair || Fatigue <= 0f)
+            if (!HasLair || (Fatigue <= 0f && Health >= _stats.Health))
             {
                 State = CreatureState.Idle;
                 _decisionCooldown = 0f;
             }
         }
 
+        /// <summary>
+        /// Closes wounds, in whole points so the health readout stays an integer. Only ever
+        /// called from a lair — a creature that cannot get to bed does not recover.
+        /// </summary>
+        void Mend(float dt)
+        {
+            if (Health >= _stats.Health) return;
+
+            _mendPool += _stats.HealPerSecond * dt;
+
+            int whole = Mathf.FloorToInt(_mendPool);
+            if (whole <= 0) return;
+
+            _mendPool -= whole;
+            Health = Mathf.Min(_stats.Health, Health + whole);
+        }
+
         void TickWandering(float dt)
         {
             if (TryFindFight()) return;
 
-            if (Fatigue >= 1f && HasLair)
+            if (WantsRest && HasLair)
             {
                 State = CreatureState.Idle;
                 _decisionCooldown = 0f;
@@ -377,15 +409,14 @@ namespace DK
             // Already next to it: no route needed, just start swinging.
             if (!Battlefield.InReach(this, enemy) && !_walker.SetPath(enemy.Cell)) return false;
 
-            // Only a new fight restarts the swing clock. Engage is also called from
+            // Only stepping into a fight restarts the swing clock. Engage is also called from
             // TakeDamage, and resetting there let each side's hit hand the other a free swing:
             // the two fed each other every frame, so a duel meant to take seconds was decided
-            // in about a tenth of one and looked like creatures vanishing on contact.
-            if (State != CreatureState.Fighting || !ReferenceEquals(_enemy, enemy))
-            {
-                _swingTimer = 0f;
-                _chaseRepath = 0.4f;
-            }
+            // in about a tenth of one and looked like creatures vanishing on contact. Switching
+            // targets inside a fight does not restart it either — see HeroAI.Engage, where the
+            // same reset turned being surrounded into an advantage.
+            if (State != CreatureState.Fighting) _swingTimer = 0f;
+            if (!ReferenceEquals(_enemy, enemy)) _chaseRepath = 0.4f;
 
             _enemy = enemy;
             State = CreatureState.Fighting;

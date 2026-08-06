@@ -353,9 +353,12 @@ namespace DK
             if (enemy == null || !enemy.IsAlive) return false;
             if (!Battlefield.InReach(this, enemy) && !_walker.SetPath(enemy.Cell)) return false;
 
-            // See CreatureAI.Engage: only a new fight restarts the swing clock, or being hit
-            // buys a free attack and both sides swing every frame.
-            if (State != HeroState.Fighting || !ReferenceEquals(_enemy, enemy)) _swingTimer = 0f;
+            // Stepping into a fight restarts the swing clock; switching targets inside one
+            // never does. TakeDamage re-engages on whoever landed the last blow, so a hero with
+            // several defenders on him used to get a free swing for every hit he took: his
+            // damage output scaled with the size of the crowd, and outnumbering him made him
+            // stronger. The Lord could clear a full garrison on his own that way.
+            if (State != HeroState.Fighting) _swingTimer = 0f;
 
             _enemy = enemy;
             State = HeroState.Fighting;

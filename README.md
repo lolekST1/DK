@@ -2,7 +2,7 @@
 
 A vertical slice of the core Dungeon Keeper loop: mark rock for digging, imps path to it and
 dig it out, then haul what they mine back to a vault you had to build and pay for. A dungeon
-heart sits at the centre, lairs give everyone somewhere to sleep, and a portal sealed in the
+heart sits at the centre, lairs give your creatures somewhere to sleep and mend, and a portal sealed in the
 rock sends creatures once you dig your way to it — creatures that expect wages every payday and
 earn them by fighting off the heroes who come for your vault. Hold out through the raids and
 the Lord of the Land comes for the heart itself: kill him and the dungeon is yours, lose the
@@ -53,9 +53,9 @@ have nowhere to store just stay on the floor until you build one. Build a lair a
 send another creature to fill it; imps do not sleep and never take one.
 
 The portal sits in a sealed cavern three quarters of the way across the map. Dig a route to it
-and creatures start arriving — but only while a lair is standing empty, and imps sleep in the
-same lairs, so housing is a real budget. Every creature then bills the vault on payday. A
-dungeon that cannot pay watches its creatures redden, and after three missed paydays they walk
+and creatures start arriving — but only while a lair is standing empty, so housing is a real
+budget, and a lair is also the only place a wound heals. Every creature then bills the vault on
+payday. A dungeon that cannot pay watches its creatures redden, and after three missed paydays they walk
 back out through the portal. The HUD says what the portal is waiting for and what payroll costs.
 
 ## WebGL build
@@ -92,8 +92,8 @@ Assets/Scripts/
   HeroAI.cs           Advancing → Fighting → Escaping, and robbing a vault tile
   HeroCatalog.cs      Health, damage, loot and intent per hero kind — knight and Lord
   CreatureManager.cs  Portal roster: arrivals, payday, departures
-  CreatureAI.cs       Idle → GoingToLair → Sleeping / Wandering / Leaving
-  CreatureCatalog.cs  Wage, fatigue and patience per creature — the whole creature balance
+  CreatureAI.cs       Idle → GoingToLair → Sleeping / Wandering / Fighting / Leaving
+  CreatureCatalog.cs  Wage, fatigue, patience and healing per creature — the creature balance
   Pathfinder.cs       4-directional A* over the tile array
   GridWalker.cs       Path following and turning, shared by everything that walks
   ImpAI.cs            Idle → MoveToTarget → Digging → HaulGold → ReturnToBase, one per imp
@@ -116,16 +116,22 @@ A hero gate sits sealed in the opposite corner from the portal. Dig through to i
 start after a grace period: a knight walks in, makes for the nearest vault tile with gold on
 it, takes what it can carry and heads back to the gate.
 
+Creatures answer a raid from anywhere in the dungeon, breaking off whatever they were doing and
+waking up for it if they were asleep. One beetle loses to a knight but leaves it under half
+health, so the second one there finishes it. Kill a knight before it reaches the gate and the
+loot falls on the floor for the imps to carry home; let it out and the gold is gone.
+
 Survive five of those and the sixth wave is the **Lord of the Land**, who walks past the vault
 and swings at the dungeon heart instead. Kill him and you have won; let the heart fall and the
-run ends there. He is balanced against defenders arriving one at a time, because that is what
-happens — they are asleep in lairs dotted about the map. Each beetle gets about sixty damage in
-before he kills it, so a queue of five finishes him. Meeting him together is much cheaper. Creatures leave their lairs to
-intercept it from anywhere in the dungeon, breaking off whatever they were doing — which in
-practice means arriving one at a time: one beetle loses to a knight but
-leaves it under half health, so the second one through the door finishes it. Arriving together
-is better still. Either way the answer to a raid is housing and paying more creatures. Kill it before it reaches the gate and the loot falls on the floor, and
-the imps carry it home. Let it out and the gold is gone.
+run ends there. He is balanced against the whole garrison, because that is who turns up: what
+a crowd of *N* can land on him before he kills them all goes up with *N* squared, so the fight
+is decided by how many creatures the dungeon housed and paid for. Four or five lose the heart.
+Six or seven hold it and bury two to four of their own. A full roster of ten walks away without
+a loss. The HUD counts his health down while he is on the map.
+
+Wounds only close in a lair. A creature that comes out of a fight badly hurt goes to bed
+unprompted and sleeps itself whole, which is what the quiet between raids is for — and a
+dungeon with no lairs keeps every scratch it takes until the Lord arrives to collect.
 
 ## Design notes
 
@@ -190,6 +196,22 @@ housing should be a budget spent between faster digging and more tenants. In pra
 six silently ate the first six lairs a player built, the portal reported "no free lair" with
 nine of them standing there, and nothing on screen connected the two. A lair now means one more
 creature, which is what building one looks like it should do.
+
+**Being outnumbered has to be bad for whoever is in the middle.** Taking a hit re-engages
+whoever landed it, so that a creature jumped from behind turns round. That used to restart the
+attacker's swing clock too, which handed the one in the middle a free swing for every blow
+taken: a Lord with five creatures on him swung six times his catalogued rate, and the more
+defenders a keeper housed, the faster he killed them. Switching targets inside a fight now
+carries the clock over; only stepping into a fight restarts it. Dead creatures also kept
+swinging until the manager cleared the body a frame later — long enough not to matter in play,
+but every last-stand figure in the test harness had been measured against defenders that fought
+on after they died, which is why the shipped Lord read as unbeatable and tested as trivial.
+
+**Wounds close in a lair, and nowhere else.** Nothing healed before, so damage was permanent
+and a garrison was ground down over the five knight waves with no way back — the last stand was
+fought by whatever was left rather than by what the player had paid for. A creature below half
+health now goes to bed unprompted and sleeps until it is whole. It is the lair's second job,
+and it gives the gap between raids something to be for.
 
 **Anger is slow on purpose.** Homelessness takes two minutes to drive a creature out, and
 payroll takes three missed paydays. Both are long enough to notice the HUD warning and dig
@@ -308,9 +330,14 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   It fails at the old numbers.
 - **The last stand** — the fight the whole economy pays for, measured rather than reasoned
   about. Four to nine defenders, bunched at the heart or ringed twelve tiles out, with and
-  without three knights still inside; and then the case the matrix missed and the player hit,
-  beetles arriving strictly one at a time. That last one is the tight one, so it is the one the
-  balance is set against.
+  without three knights still inside, plus what a single beetle is worth fed to him alone. Four
+  have to lose the heart and seven have to hold it, which is the threshold the Lord's health is
+  set to.
+- **Swarms** — five creatures on one hero, arriving out of step so each is a separate attacker.
+  His swing rate has to stay inside his catalogued interval however many are hitting him, and
+  the crowd has to be winning the exchange.
+- **Mending** — a creature down to its last few points goes to its lair without waiting to get
+  tired, sleeps itself whole, and gets up again; one with nowhere to sleep stays hurt.
 - **The endings** — a knight robs the place and leaves the heart untouched, while the Lord
   walks past the vault, takes nothing, and brings the heart down in about forty seconds, which
   loses the run. Kill him instead and it is won. The structure rule is checked directly: a

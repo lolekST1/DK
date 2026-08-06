@@ -132,6 +132,17 @@ tile claim in the same step and is easier to read as one piece.
   `WavesBeforeLord` ordinary raids. `GameDirector` watches for either ending and stops the
   clock.
 
+- **A last stand that scales with the garrison.** Being hit re-engages the attacker, and that
+  used to restart the swing clock, so whoever was outnumbered got a free swing per blow taken —
+  the Lord's damage output grew with the size of the crowd fighting him and he could clear a
+  full roster alone. Dead creatures also went on swinging for the frame before the manager
+  cleared them, which is what made the harness's last-stand matrix agree with the old numbers.
+  With both fixed, the Lord is tuned against the crowd that actually arrives (1100 health):
+  four or five defenders lose the heart, six or seven hold it with losses, ten walk away clean.
+- **Wounds close in a lair.** `CreatureCatalog.HealPerSecond`, spent in `CreatureState.Sleeping`
+  and nowhere else. A creature under half health goes to bed unprompted. Before this, damage was
+  permanent and the garrison was worn down over the knight waves with no way back.
+
 Known gap: there is no restart after the run ends — the timescale stays at zero until the
 scene is reloaded.
 

@@ -47,13 +47,17 @@ namespace DK
                     {
                         Name = "Lord of the Land",
 
-                        // Tuned against the case that actually happens: defenders are asleep
-                        // in lairs dotted about the map, so they arrive one at a time and fight
-                        // him one at a time. Each beetle gets about 60 damage in before it dies,
-                        // so this takes five of them in a queue — comfortable for a housed
-                        // dungeon, hopeless for a keeper with three. At 320 and 14 it took
-                        // seven, which is nearly the whole roster with nothing to spare.
-                        Health = 280,
+                        // Defenders do not queue: every creature on the map answers a raid, so
+                        // he fights a crowd that grows its damage with every member. What a
+                        // garrison of N can land before he kills them all goes up with N
+                        // squared, which is why this number is nothing like the 280 that a
+                        // one-at-a-time reading of the fight suggested. Measured on a full map,
+                        // with lairs round the heart: five defenders lose the heart, six or
+                        // seven win it at the cost of two to four of them, and a full roster of
+                        // ten walks away with nobody lost. That is the fight the economy pays
+                        // for — hopeless for a keeper with three, comfortable for one who
+                        // housed and paid a garrison.
+                        Health = 1100,
                         Damage = 12,
                         AttackInterval = 1.3f,
                         MoveSpeed = 2.2f,

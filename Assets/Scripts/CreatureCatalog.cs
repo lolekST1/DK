@@ -45,6 +45,14 @@ namespace DK
             /// <summary>Damage it can absorb before it dies.</summary>
             public int Health;
 
+            /// <summary>
+            /// Health recovered per second asleep in a lair, and nowhere else. Without this,
+            /// every wound a creature takes is permanent: a garrison that met five raids came
+            /// to the last one on two thirds health with no way back, so the Lord fought a
+            /// worn-down dungeon however well the player had played up to then.
+            /// </summary>
+            public float HealPerSecond;
+
             /// <summary>Damage dealt per swing.</summary>
             public int Damage;
 
@@ -95,6 +103,11 @@ namespace DK
                         Health = 70,
                         Damage = 8,
                         AttackInterval = 1.0f,
+
+                        // A full night in a lair — about half a minute — mends a beetle from
+                        // nearly dead to whole. Slower than the raid clock on purpose: back to
+                        // back waves still find the garrison short of its best.
+                        HealPerSecond = 70f / 30f,
 
                         // Effectively the whole dungeon: every beetle answers every raid.
                         AlertRange = 64,

@@ -129,6 +129,8 @@ public static class TestHarness
         EndgameChecks();
         DefenceChecks();
         DuelChecks();
+        SwarmChecks();
+        MendingChecks();
         CombatChecks();
 
         Console.WriteLine(_failures == 0
@@ -742,23 +744,46 @@ public static class TestHarness
                               $"{outcome,-15} in {seconds,3:0}s ({survivors} left, heart {heartLeft})");
         }
 
-        // Strictly one at a time: the next only sets off once the last one is dead. This is
-        // what the player actually saw, and what the ringed matrix above never tested.
+        // What one beetle is worth on its own, fed to him one at a time. Not a way to win —
+        // a garrison that trickled in like this would be spent long before he was — but it is
+        // the number the crowd arithmetic is built out of, so it is worth pinning down.
         int spent = RunSequentialStand(out int lordLeft, out int perBeetle);
         Console.WriteLine($"    one at a time: {spent} beetles spent, Lord on {lordLeft}, " +
                           $"~{perBeetle} damage each");
 
-        // Well inside a full roster: arriving in a queue is the normal case, so it must not
-        // need every creature the dungeon can house.
-        Check(spent > 0 && spent <= 6,
-            $"a queue of beetles arriving one at a time kills the Lord with room to spare (took {spent})");
+        var beetleStats = CreatureCatalog.Get(CreatureKind.Beetle);
+        var lordStats = HeroCatalog.Get(HeroKind.Lord);
 
-        // Scattered across the dungeon is the normal case: creatures sleep in their lairs and
-        // come when the Lord turns up, so they arrive strung out rather than as a wall.
-        var nine = RunLastStand(9, 12, 0, out _, out int leftAtNine, out int heartAtNine);
-        Check(nine == "lord dead", $"nine creatures spread over the dungeon still put the Lord down (got: {nine})");
-        Check(heartAtNine > 0, $"with the heart still standing ({heartAtNine})");
-        Check(leftAtNine > 0, "and somebody left alive to hold it");
+        // Each beetle lands its swings for as long as it survives, and no more. This is the
+        // duel cadence seen from the Lord's side: it moved the day both sides handed each
+        // other a free swing per hit taken.
+        int solo = (int)(beetleStats.Health / (float)lordStats.Damage) * beetleStats.Damage;
+        Check(perBeetle >= solo - beetleStats.Damage && perBeetle <= solo + beetleStats.Damage * 2,
+            $"a beetle on its own lands about {solo} damage on him (got {perBeetle})");
+
+        // The threshold the economy is aiming at. Below it the heart goes; at it the dungeon
+        // holds, and pays for it. Creatures answer a raid from anywhere on the map, so what
+        // decides this is how many were housed, not where their lairs were put.
+        var four = RunLastStand(4, 12, 0, out _, out _, out int heartAtFour);
+        Check(four == "heart destroyed",
+            $"four defenders cannot hold the heart against the Lord (got: {four})");
+        Check(heartAtFour == 0, "and the run is lost with it");
+
+        var seven = RunLastStand(7, 12, 0, out _, out int leftAtSeven, out int heartAtSeven);
+        Check(seven == "lord dead", $"seven put him down (got: {seven})");
+        Check(heartAtSeven == DungeonHeart.DefaultHealth, "without letting him touch the heart");
+        Check(leftAtSeven > 0 && leftAtSeven < 7,
+            $"at the cost of some of them ({7 - leftAtSeven} lost)");
+
+        // A full roster is meant to be comfortable rather than a coin toss, however the lairs
+        // were laid out.
+        foreach (int spread in new[] { 0, 12 })
+        {
+            var nine = RunLastStand(9, spread, 0, out _, out int leftAtNine, out int heartAtNine);
+            Check(nine == "lord dead", $"nine creatures put the Lord down, spread {spread} (got: {nine})");
+            Check(heartAtNine == DungeonHeart.DefaultHealth, $"with the heart untouched ({heartAtNine})");
+            Check(leftAtNine >= 7, $"and most of them still standing ({leftAtNine} of 9)");
+        }
     }
 
     /// <summary>
@@ -1081,6 +1106,114 @@ public static class TestHarness
         Check(finish > 0f, $"the second beetle got there ({finish:0.0}s)");
         Check(!hero.IsAlive, "two beetles arriving one after the other kill a knight");
         Check(second.IsAlive, "and the second one lives to tell it");
+
+        // Nothing swings after it is dead. Unity's Destroy only takes effect at the end of the
+        // frame and the manager clears the body on its next pass, so a corpse gets a window in
+        // which its Update still runs; every last-stand figure in here was measured against
+        // defenders that fought on through it.
+        var corpse = NewBeetle(world, battlefield, battlefield, arena);
+        corpse.TakeDamage(beetleStats.Health, null);
+        var victim = NewHero(world, battlefield, arena);
+
+        StepDuel(victim, corpse, 5f);
+        Check(victim.Health == HeroCatalog.Get(HeroKind.Knight).Health,
+            $"and a dead beetle lands no more blows ({victim.Health} health left on the knight)");
+    }
+
+    // ------------------------------------------------------------------ swarms
+
+    /// <summary>
+    /// Being outnumbered has to be bad for the one in the middle. Every hit taken re-engages
+    /// the attacker, and that used to restart the swing clock: a hero with five creatures on
+    /// him swung once per blow received — six times his catalogued rate — so the Lord could
+    /// clear a full garrison on his own and the fix for it is worth a guard.
+    /// </summary>
+    static void SwarmChecks()
+    {
+        var world = NewWorld("Swarm", 1337);
+        var battlefield = new GameObject("SwarmField").AddComponent<Battlefield>();
+
+        var arena = world.Grid.BaseCell;
+        var lord = new GameObject("SwarmLord").AddComponent<HeroAI>();
+        lord.Configure(world.Grid, world.Rooms, world.Economy, world.Spillage, battlefield, null,
+                       HeroKind.Lord, new GameObject("SwarmLordBody").transform, null, arena);
+
+        var stats = HeroCatalog.Get(HeroKind.Lord);
+        var beetleStats = CreatureCatalog.Get(CreatureKind.Beetle);
+        var swarm = new List<CreatureAI>();
+
+        // Staggered arrivals, so their swings never line up and every one of them is a
+        // separate attacker as far as he is concerned.
+        const float Window = 6f;
+        int steps = (int)(Window / Time.deltaTime);
+        float t = 0f;
+        int arrived = 0;
+
+        for (int i = 0; i < steps; i++)
+        {
+            t += Time.deltaTime;
+            while (arrived < 5 && arrived * 0.37f <= t)
+            {
+                swarm.Add(NewBeetle(world, battlefield, battlefield, arena + new Vector2Int(0, 1)));
+                arrived++;
+            }
+
+            HeroUpdate.Invoke(lord, null);
+            foreach (var beetle in swarm) CreatureUpdate.Invoke(beetle, null);
+        }
+
+        int dealt = 0;
+        foreach (var beetle in swarm) dealt += beetleStats.Health - beetle.Health;
+
+        float swings = dealt / (float)stats.Damage;
+        float allowed = Window / stats.AttackInterval + 1.5f;
+
+        Check(swings <= allowed,
+            $"five creatures on the Lord do not speed his swing up ({swings:0.0} swings in {Window:0}s, " +
+            $"one per {stats.AttackInterval:0.0}s allows {allowed:0.0})");
+        Check(swings > 1f, $"though he is certainly swinging ({swings:0.0})");
+
+        int taken = stats.Health - lord.Health;
+        Check(taken > dealt, $"and the crowd is winning the exchange ({taken} dealt to him, {dealt} to them)");
+    }
+
+    // ----------------------------------------------------------------- mending
+
+    /// <summary>
+    /// Wounds close in a lair and nowhere else. Without this every raid took a permanent bite
+    /// out of the garrison, so the dungeon that met five waves met the Lord with two thirds of
+    /// the creatures it had paid for.
+    /// </summary>
+    static void MendingChecks()
+    {
+        var world = NewWorld("Mending", 1337);
+        var battlefield = new GameObject("MendField").AddComponent<Battlefield>();
+        var stats = CreatureCatalog.Get(CreatureKind.Beetle);
+
+        world.Rooms.DepositAnywhere(1000);
+        Check(world.Rooms.Build(world.Grid.BaseCell.x + 2, world.Grid.BaseCell.y, RoomType.Lair),
+            "a lair just clear of the heart");
+
+        var beetle = NewBeetle(world, battlefield, battlefield, world.Grid.BaseCell);
+        beetle.TakeDamage(stats.Health - 10, null);
+        Check(beetle.Health == 10, "a beetle down to its last few points");
+        Check(beetle.WantsRest, "wants its bed without waiting to get tired");
+
+        float abed = RunCreatureUntil(beetle, () => beetle.State == CreatureState.Sleeping, 60f);
+        Check(abed > 0f, $"walks to its lair and turns in without being tired ({abed:0.0}s)");
+
+        float mended = RunCreatureUntil(beetle, () => beetle.Health >= stats.Health, 120f);
+        Check(mended > 0f, $"and sleeps itself whole again ({mended:0.0}s)");
+
+        StepCreature(beetle, 2f);
+        Check(beetle.State != CreatureState.Sleeping, "then gets up, having come to bed for the wound");
+
+        // No lair, no recovery: this is what the player is buying when they pay for one.
+        var homeless = NewBeetle(world, battlefield, battlefield, world.Grid.BaseCell);
+        homeless.TakeDamage(stats.Health - 10, null);
+
+        StepCreature(homeless, 60f);
+        Check(homeless.Health == 10, $"a creature with nowhere to sleep stays hurt ({homeless.Health})");
     }
 
     static float FlatDistance(Vector3 a, Vector3 b)

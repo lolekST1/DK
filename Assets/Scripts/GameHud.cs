@@ -195,6 +195,13 @@ namespace DK
             if (_heart != null && _heart.Health < _heart.MaxHealth)
                 Builder.Append("   Heart ").Append(_heart.Health).Append('/').Append(_heart.MaxHealth);
 
+            // The last stand runs for half a minute or so. Without a number on it there is no
+            // way to tell a Lord who is nearly down from one who has barely been scratched,
+            // and that is the only question the player has left by then.
+            var lord = TheLord();
+            if (lord != null)
+                Builder.Append("   Lord ").Append(lord.Health).Append('/').Append(lord.MaxHealth);
+
             _gold.Set(Builder.ToString());
         }
 
@@ -307,7 +314,8 @@ namespace DK
                 return "Portal: " + _creatures.ArrivalBlocker;
 
             if (_rooms != null && _rooms.LairCount == 0)
-                return "No lair yet. Imps with a lair dig faster [3].";
+                return "No lair yet. Creatures need one each to move in, and only sleep off " +
+                       "their wounds in one [3].";
 
             // Only worth saying before the first raid, while it is still news.
             if (_heroes != null && _heroes.GateReachable && _heroes.WavesSent == 0)
@@ -319,6 +327,20 @@ namespace DK
                        " to go before the Lord of the Land comes for the heart.";
 
             return string.Empty;
+        }
+
+        /// <summary>The Lord of the Land while he is in the dungeon, or null.</summary>
+        HeroAI TheLord()
+        {
+            if (_heroes == null) return null;
+
+            for (int i = 0; i < _heroes.Heroes.Count; i++)
+            {
+                var hero = _heroes.Heroes[i];
+                if (hero != null && hero.Kind == HeroKind.Lord && hero.IsAlive) return hero;
+            }
+
+            return null;
         }
 
         /// <summary>What the next payday will cost, so the warning can name a number.</summary>
