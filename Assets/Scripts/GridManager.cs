@@ -15,6 +15,9 @@ namespace DK
         public const float BlockHeight = 1f;
         public const int GoldPerSeam = 50;
 
+        /// <summary>How much of its tile a block fills. The remainder is the seam between them.</summary>
+        public const float BlockInset = 0.96f;
+
         // Layout is a 3D array with a single Y layer for now; verticality is out of scope,
         // but the storage shape means adding layers later does not change the data model.
         public int Width { get; private set; } = 20;
@@ -108,7 +111,12 @@ namespace DK
                 // Picking is done with a maths plane raycast, so colliders are dead weight.
                 Destroy(block.GetComponent<Collider>());
                 block.transform.SetParent(blocksRoot, false);
-                block.transform.localScale = new Vector3(TileSize, BlockHeight, TileSize);
+                // Slightly under a full tile, so the dark floor shows through as a seam and
+                // the rock reads as blocks. With cast shadows off there is nothing else to
+                // separate one block top from the next: they share a normal and a colour, and
+                // a field of them came out as one flat sheet.
+                block.transform.localScale = new Vector3(TileSize * BlockInset, BlockHeight,
+                                                         TileSize * BlockInset);
                 block.transform.localPosition = CellToWorld(x, z) + Vector3.up * (BlockHeight * 0.5f);
 
                 var renderer = block.GetComponent<Renderer>();
@@ -254,6 +262,14 @@ namespace DK
 
         // ---------------------------------------------------------------- visuals
 
+        /// <summary>Deterministic per-tile brightness, so the same map always looks the same.</summary>
+        static float CellShade(int x, int z)
+        {
+            int hash = (x * 73856093) ^ (z * 19349663);
+            hash = (hash ^ (hash >> 13)) * 1274126177;
+            return 0.94f + ((hash >> 16) & 0xFF) / 255f * 0.12f;
+        }
+
         void ApplyTint(int x, int z)
         {
             var renderer = _renderers[x, 0, z];
@@ -263,6 +279,11 @@ namespace DK
             Color color = _marked[x, 0, z]
                 ? (gold ? MarkedGoldColor : MarkedRockColor)
                 : (gold ? GoldColor : RockColor);
+
+            // A few per cent of brightness either way, fixed per tile. Enough that a wall of
+            // rock has texture rather than being one colour across a third of the screen.
+            float shade = CellShade(x, z);
+            color = new Color(color.r * shade, color.g * shade, color.b * shade, color.a);
 
             renderer.GetPropertyBlock(_propertyBlock);
             MaterialLibrary.SetColor(_propertyBlock, color);

@@ -69,7 +69,10 @@ namespace DK.EditorTools
             // http.server`) with no Content-Encoding configuration.
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
             PlayerSettings.WebGL.decompressionFallback = false;
-            PlayerSettings.WebGL.dataCaching = true;
+            // Off on purpose. It caches the data file in IndexedDB, and a rebuilt player
+            // served from the same URL can come back with the previous build's contents —
+            // which is indistinguishable from "the fix did not work".
+            PlayerSettings.WebGL.dataCaching = false;
             // Keeping thrown exceptions costs a little size but means a misbehaving build
             // reports something in the browser console instead of failing silently.
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;

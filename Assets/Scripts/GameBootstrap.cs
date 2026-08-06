@@ -230,7 +230,8 @@ namespace DK
             int level = QualitySettings.GetQualityLevel();
             string quality = names != null && level >= 0 && level < names.Length ? names[level] : "?";
 
-            Debug.Log($"[DK] render: quality={quality} msaa={QualitySettings.antiAliasing}x " +
+            Debug.Log($"[DK] build {Application.buildGUID} — " +
+                      $"render: quality={quality} msaa={QualitySettings.antiAliasing}x " +
                       $"shadowDistance={QualitySettings.shadowDistance:0} " +
                       $"pipeline={(GraphicsSettings.defaultRenderPipeline != null ? "URP" : "Built-in")} " +
                       $"screen={Screen.width}x{Screen.height} dpi={Screen.dpi:0}");

@@ -317,7 +317,8 @@ namespace UnityEngine
         public static float timeScale = 1f;
     }
     public static class Screen { public static int width => 0; public static int height => 0; public static float dpi => 0f; }
-    public static class Application { public static bool isFocused => true; public static bool isBatchMode => false; }
+    public static class Application { public static bool isFocused => true;
+        public static string buildGUID => ""; public static bool isBatchMode => false; }
     public static class Debug
     {
         public static void Log(object m) { }

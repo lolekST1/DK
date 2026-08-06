@@ -71,7 +71,10 @@ Unity -quit -batchmode -nographics -projectPath . \
 
 The build is uncompressed on purpose, so it serves from any static host without
 `Content-Encoding` configuration — including `python3 -m http.server` inside
-`Builds/WebGL/`.
+`Builds/WebGL/`. Data caching is off for the same class of reason: it keeps the data file in
+IndexedDB, and a rebuilt player served from the same URL can come back as the previous build,
+which looks exactly like a fix that did not work. The startup log line names the build GUID, so
+the browser console can always answer which build is on screen.
 
 `Builds/` is gitignored; the build output is an artifact, not source.
 
@@ -275,6 +278,12 @@ framing scales with the grid too, and starts far enough out to hold all of it.
 
 **No colliders.** Mouse picking is two maths-plane raycasts — one at the top of the blocks,
 one at floor level — so there is not a single collider in the scene.
+
+**Blocks are inset, and shaded per tile.** Each block fills 96% of its tile, so the dark floor
+shows through as a seam, and every tile takes a few per cent of brightness either way from a
+hash of its coordinates. Without cast shadows, adjacent block tops share a normal and a colour
+and a field of rock came out as one flat sheet with no edges in it at all. This puts the grid
+back without a shadow map.
 
 **No cast shadows.** Every block top shares one normal, so they must all light identically —
 and in a build they did not: the far half of the map came out dark with a stepped edge across
