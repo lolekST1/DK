@@ -230,7 +230,7 @@ namespace DK
                 MaterialLibrary.CreateLit("DK_CreatureShell", new Color(0.14f, 0.20f, 0.16f));
 
             var creature = root.AddComponent<CreatureAI>();
-            creature.Configure(_grid, _rooms, _battlefield, kind, body.transform, renderer, cell);
+            creature.Configure(_grid, _rooms, _battlefield, _economy, kind, body.transform, renderer, cell);
             return creature;
         }
 

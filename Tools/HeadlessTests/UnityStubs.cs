@@ -136,7 +136,7 @@ namespace UnityEngine
         public bool Raycast(Ray ray, out float distance) { distance = 0f; return true; }
     }
 
-    public enum KeyCode { Q, E, R, F1, Escape, Alpha1, Alpha2, Alpha3, Alpha4 }
+    public enum KeyCode { Q, E, R, F1, Escape, Alpha1, Alpha2, Alpha3, Alpha4, Alpha5 }
 
     public enum PrimitiveType { Cube, Capsule, Cylinder, Sphere, Quad, Plane }
     public enum CameraClearFlags { SolidColor, Skybox }

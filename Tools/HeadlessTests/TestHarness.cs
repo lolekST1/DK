@@ -124,6 +124,9 @@ public static class TestHarness
         // --- who the portal and the gate can send -------------------------------
         RosterChecks();
 
+        // --- gold buying strength rather than numbers --------------------------
+        TrainingChecks();
+
         // --- the dungeon can pay for what the portal sends it -------------------
         PayrollBalanceChecks();
 
@@ -745,6 +748,66 @@ public static class TestHarness
         Check(thief.State != HeroState.Fighting, "and still will not turn and fight");
     }
 
+    // --------------------------------------------------------------- training
+
+    /// <summary>
+    /// The training room is the only thing that turns gold into a stronger garrison rather
+    /// than a larger one, and it is paid for twice — once to build, once per level taken.
+    /// </summary>
+    static void TrainingChecks()
+    {
+        var world = NewWorld("Train", 1337);
+        var field = new GameObject("TrainField").AddComponent<Battlefield>();
+
+        // Vault first: the heart alone holds 225, and a room at 120 plus four levels at 40
+        // does not fit in that — which is a real constraint, just not the one under test here.
+        world.Rooms.DepositAnywhere(100000);
+        Check(world.Rooms.Build(8, 8, RoomType.Treasury), "a treasury to pay for it all");
+        Check(world.Rooms.Build(8, 9, RoomType.Treasury), "and a second tile");
+        world.Rooms.DepositAnywhere(100000);
+
+        Check(world.Rooms.Build(9, 8, RoomType.TrainingRoom), "a training room goes up");
+        Check(world.Rooms.TrainingCount == 1, "and the rooms layer knows about it");
+
+        var beetle = NewBeetle(world, field, field, world.Grid.BaseCell);
+        var stats = CreatureCatalog.Get(CreatureKind.Beetle);
+
+        Check(beetle.Level == 0, "a creature arrives untrained");
+        Check(beetle.MaxHealth == stats.Health && beetle.Damage == stats.Damage,
+            "at exactly its catalog numbers");
+
+        int before = world.Economy.Gold;
+        float trained = RunCreatureUntil(beetle, () => beetle.Level > 0, 120f);
+
+        Check(trained > 0f, $"it went and trained a level ({trained:0.0}s)");
+        Check(beetle.State == CreatureState.Training, "and is still in the room");
+        Check(world.Economy.Gold == before - CreatureCatalog.GoldPerLevel,
+            $"the level was paid for ({before} -> {world.Economy.Gold})");
+        Check(beetle.Damage > stats.Damage && beetle.MaxHealth > stats.Health,
+            $"and bought something: {beetle.Damage} damage against {stats.Damage}");
+
+        // --- it stops at the cap ---------------------------------------------
+        RunCreatureUntil(beetle, () => beetle.Level >= CreatureCatalog.MaxLevel, 600f);
+        Check(beetle.Level == CreatureCatalog.MaxLevel, $"training runs out at level {beetle.Level}");
+
+        StepCreature(beetle, 40f);
+        Check(beetle.Level == CreatureCatalog.MaxLevel, "and stays there");
+
+        // --- and it stops when the dungeon cannot pay -------------------------
+        var poor = NewWorld("Poor", 1337);
+        var poorField = new GameObject("PoorField").AddComponent<Battlefield>();
+
+        poor.Rooms.DepositAnywhere(100000);
+        Check(poor.Rooms.Build(9, 8, RoomType.TrainingRoom), "a training room in a dungeon about to go broke");
+        while (poor.Economy.TrySpend(1)) { }
+
+        var pauper = NewBeetle(poor, poorField, poorField, poor.Grid.BaseCell);
+        StepCreature(pauper, 90f);
+
+        Check(pauper.Level == 0, "a dungeon with no gold trains nobody");
+        Check(pauper.State != CreatureState.Training, "and the creature does not stand in the room waiting");
+    }
+
     // -------------------------------------------------------- payroll balance
 
     /// <summary>
@@ -1323,7 +1386,7 @@ public static class TestHarness
     static CreatureAI NewBeetle(World world, Battlefield battlefield, Battlefield unused, Vector2Int cell)
     {
         var beetle = new GameObject("DuelBeetle").AddComponent<CreatureAI>();
-        beetle.Configure(world.Grid, world.Rooms, battlefield, CreatureKind.Beetle,
+        beetle.Configure(world.Grid, world.Rooms, battlefield, world.Economy, CreatureKind.Beetle,
                          new GameObject("DuelBeetleBody").transform, null, cell);
         return beetle;
     }
@@ -1467,7 +1530,7 @@ public static class TestHarness
 
         // --- the battlefield only ever points at the other side ----------------
         var lone = new GameObject("Lone").AddComponent<CreatureAI>();
-        lone.Configure(grid, rooms, battlefield, CreatureKind.Beetle,
+        lone.Configure(grid, rooms, battlefield, world.Economy, CreatureKind.Beetle,
                        new GameObject("LoneBody").transform, null, grid.BaseCell);
         Check(!battlefield.TryFindNearestEnemy(lone, int.MaxValue, out _),
             "a dungeon creature finds no enemy when there are no heroes");

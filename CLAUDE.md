@@ -152,7 +152,13 @@ scene would then silently outrank the code.
   portal rotates through `CreatureCatalog.All`; ordinary raids alternate knight and thief.
   `HeroCatalog.Entry.FightsBack` is the whole of what makes a thief a different problem.
 
-Natural next part: verticality, which the 3D tile array is already shaped for.
+- **The training room.** `RoomType.TrainingRoom`, `CreatureState.Training`, and levels that
+  add 20% health and damage each for 40 gold and 20 seconds, capped at four. Deliberately not
+  a wage increase: training is a capital cost, so the payroll balance stays where it was.
+
+Verticality was considered and dropped: doing it properly means `Vector2Int` becoming
+`Vector3Int` across every file, and the terrain-elevation version that keeps 2D coordinates
+buys visual depth rather than the stacked floors the original has. Not worth either price yet.
 
 Watch out for: materials are created at runtime, so nothing in the project references a
 shader, so a build strips them all. `ProjectAutoSetup` keeps them in Always Included Shaders.

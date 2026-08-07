@@ -55,7 +55,7 @@ namespace DK
 
         float _refreshTimer;
 
-        const string Hint = "Click a tool or press 1-4   LMB paint   RMB undo   WASD / screen edge pan   Q/E rotate (hold)   Wheel zoom   F1 stats";
+        const string Hint = "Click a tool or press 1-5   LMB paint   RMB undo   WASD / screen edge pan   Q/E rotate (hold)   Wheel zoom   F1 stats";
 
         static readonly StringBuilder Builder = new StringBuilder(160);
 
@@ -85,7 +85,9 @@ namespace DK
             new ToolSpec { Tool = PlayerTool.Dig, Label = "Dig", Hotkey = 1, Room = RoomType.None },
             new ToolSpec { Tool = PlayerTool.BuildTreasury, Label = "Treasury", Hotkey = 2, Room = RoomType.Treasury },
             new ToolSpec { Tool = PlayerTool.BuildLair, Label = "Lair", Hotkey = 3, Room = RoomType.Lair },
-            new ToolSpec { Tool = PlayerTool.Sell, Label = "Sell", Hotkey = 4, Room = RoomType.None },
+            new ToolSpec { Tool = PlayerTool.BuildTrainingRoom, Label = "Training", Hotkey = 4,
+                           Room = RoomType.TrainingRoom },
+            new ToolSpec { Tool = PlayerTool.Sell, Label = "Sell", Hotkey = 5, Room = RoomType.None },
         };
 
         /// <summary>One clickable tool bar entry, plus the screen rect the IMGUI fallback draws.</summary>

@@ -30,7 +30,8 @@ when the vault cannot cover the next tile.
 | `1` / `Esc` | Dig tool (default) |
 | `2` | Build treasury — 50 gold a tile, holds 250 |
 | `3` | Build lair — 100 gold a tile, houses one creature |
-| `4` | Sell tool — tears a room out for half its cost |
+| `4` | Build training room — 120 gold a tile, plus 40 per level taken |
+| `5` | Sell tool — tears a room out for half its cost |
 | Left mouse (hold to paint) | Apply the selected tool |
 | Right mouse (hold to paint) | Undo it: unmark while digging, sell while building |
 | WASD, arrow keys, or screen edge | Pan the camera |
@@ -95,7 +96,7 @@ Assets/Scripts/
   RoomManager.cs      Rooms on top of terrain: heart, vault gold, lair ownership, slabs
   RoomCatalog.cs      Cost / capacity / colour per room type — the whole economy balance
   LooseGold.cs        Gold dropped on the floor: piles, per-pile claims, pickup
-  RoomType.cs         None / DungeonHeart / Treasury / Lair / Portal / HeroGate
+  RoomType.cs         None / DungeonHeart / Treasury / Lair / TrainingRoom / Portal / HeroGate
   DungeonHeart.cs     The thing there is to lose: health, damage tint, destruction
   GameDirector.cs     Watches for the two endings and stops the world
   Battlefield.cs      Combatant roster and "who is near enough to hit"
@@ -120,6 +121,18 @@ Assets/Editor/
 Assets/Settings/      URP pipeline and renderer assets, created on first Editor load
 Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 ```
+
+### Training
+
+A creature with a bed, no raid to answer and a training room to stand in will train in it: 20
+seconds and 40 gold a level, four levels, each worth 20% more health and damage. A creature at
+the cap hits about twice as hard as one that arrived yesterday.
+
+Levels do **not** raise wages. Training is a capital cost, paid once, because a creature that
+grew more expensive to keep every time it improved would make the room a trap rather than a
+choice — and the payroll balance the dungeon was built around would move under the player's
+feet. It is the only thing in the game that turns gold into a stronger garrison rather than a
+larger one.
 
 ### Raids
 
@@ -367,6 +380,11 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   a full house over the same stretch with room to spare. Priced on the portal's rotation, since
   that is what decides the bill. It caught the troll's first wage, which a full roster could
   not have paid.
+- **Training** — a creature arrives at exactly its catalog numbers, goes and trains, the level
+  is charged to the vault, the numbers go up, it stops at the cap and stays there, and a
+  dungeon with no gold trains nobody and does not leave a creature standing in the room
+  waiting. The first version of this test was simply underfunded — the heart holds 225 and the
+  room plus four levels does not fit in that — which the game refused correctly.
 - **Rosters** — every catalog entry is complete, a fly and a troll are genuinely different
   things rather than two of the same, the portal sends every kind before repeating one, and a
   thief neither seeks a fight nor turns for one when hit.

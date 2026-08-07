@@ -16,6 +16,23 @@ namespace DK
     /// </summary>
     public static class CreatureCatalog
     {
+        /// <summary>
+        /// What one level in the training room adds to health and damage, as a fraction. Not
+        /// to wages: training is a capital cost, paid once per level, and a creature that grew
+        /// more expensive to keep every time it improved would make the room a trap rather
+        /// than a choice.
+        /// </summary>
+        public const float BonusPerLevel = 0.2f;
+
+        /// <summary>Gold the dungeon pays each time a creature takes a level.</summary>
+        public const int GoldPerLevel = 40;
+
+        /// <summary>Seconds of standing in the room per level.</summary>
+        public const float SecondsPerLevel = 20f;
+
+        /// <summary>Levels a creature can take. Four fights like two of itself.</summary>
+        public const int MaxLevel = 4;
+
         public struct Entry
         {
             public string Name;
