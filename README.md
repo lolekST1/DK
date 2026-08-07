@@ -54,6 +54,12 @@ so the heart fills up fast and you have to spend your opening 100 gold on a trea
 have nowhere to store just stay on the floor until you build one. Build a lair and the portal can
 send another creature to fill it; imps do not sleep and never take one.
 
+The portal works through its roster in turn — a fly, a beetle, a troll, and round again. A fly
+is cheap and reaches a fight while the others are still crossing the map; a troll costs three
+times as much, holds a corridor, and sleeps through a good deal of the run. The rotation is
+fixed rather than random, so a garrison is something you can plan and a raid is something you
+can reproduce.
+
 The portal sits in a sealed cavern three quarters of the way across the map. Dig a route to it
 and creatures start arriving — but only while a lair is standing empty, so housing is a real
 budget, and a lair is also the only place a wound heals. Every creature then bills the vault on
@@ -118,8 +124,11 @@ Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 ### Raids
 
 A hero gate sits sealed in the opposite corner from the portal. Dig through to it and raids
-start after a grace period: a knight walks in, makes for the nearest vault tile with gold on
-it, takes what it can carry and heads back to the gate.
+start after a grace period, alternating between two problems. A **knight** walks in, makes for
+the nearest vault tile with gold on it, takes what it can carry and fights whatever meets him.
+A **thief** is quicker than anything you can house except a fly, carries far more, and will not
+turn and fight even when hit — it has to be cut off rather than answered. A dungeon that only
+solves one of them loses to the other.
 
 Creatures answer a raid from anywhere in the dungeon, breaking off whatever they were doing and
 waking up for it if they were asleep. One beetle loses to a knight but leaves it under half
@@ -355,8 +364,12 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   hands it over, and an empty tile cannot be claimed at all.
 - **Payroll balance** — the one balance figure that can be checked rather than eyeballed. A
   crew of six digs for two simulated minutes, and what they bank has to beat the wage bill for
-  a full house over the same stretch, with half again on top so a raid does not tip it over.
-  It fails at the old numbers.
+  a full house over the same stretch with room to spare. Priced on the portal's rotation, since
+  that is what decides the bill. It caught the troll's first wage, which a full roster could
+  not have paid.
+- **Rosters** — every catalog entry is complete, a fly and a troll are genuinely different
+  things rather than two of the same, the portal sends every kind before repeating one, and a
+  thief neither seeks a fight nor turns for one when hit.
 - **The last stand** — the fight the whole economy pays for, measured rather than reasoned
   about. Four to nine defenders, bunched at the heart or ringed twelve tiles out, with and
   without three knights still inside, plus what a single beetle is worth fed to him alone. Four

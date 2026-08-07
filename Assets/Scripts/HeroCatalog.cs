@@ -5,6 +5,7 @@ namespace DK
     public enum HeroKind
     {
         Knight = 0,
+        Thief,
         Lord,
     }
 
@@ -35,6 +36,12 @@ namespace DK
             /// </summary>
             public bool GoesForTheHeart;
 
+            /// <summary>
+            /// Whether being hit makes it turn and fight. False for something here to steal
+            /// and leave, which has to be intercepted rather than merely met.
+            /// </summary>
+            public bool FightsBack;
+
             public Color Colour;
         }
 
@@ -42,6 +49,27 @@ namespace DK
         {
             switch (kind)
             {
+                case HeroKind.Thief:
+                    return new Entry
+                    {
+                        Name = "Thief",
+
+                        // Not a fight, a race. It is quicker than anything the dungeon houses
+                        // except a fly, carries far more, and will not stop to trade blows even
+                        // when hit — so it has to be cut off, not answered.
+                        Health = 70,
+                        Damage = 6,
+                        AttackInterval = 1.2f,
+                        MoveSpeed = 3.6f,
+
+                        LootCapacity = 250,
+                        AlertRange = 0,
+                        GoesForTheHeart = false,
+                        FightsBack = false,
+
+                        Colour = new Color(0.42f, 0.36f, 0.54f),
+                    };
+
                 case HeroKind.Lord:
                     return new Entry
                     {
@@ -66,6 +94,7 @@ namespace DK
                         LootCapacity = 0,
                         AlertRange = 8,
                         GoesForTheHeart = true,
+                        FightsBack = true,
 
                         Colour = new Color(0.94f, 0.86f, 0.42f),
                     };
@@ -86,6 +115,7 @@ namespace DK
                         // Enough to hurt without emptying a developed vault in one visit.
                         LootCapacity = 150,
                         AlertRange = 6,
+                        FightsBack = true,
 
                         Colour = new Color(0.72f, 0.76f, 0.86f),
                     };

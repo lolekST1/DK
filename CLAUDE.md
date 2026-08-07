@@ -148,9 +148,11 @@ can mine, and `PayrollBalanceChecks` in the harness asserts it. `GameBootstrap`'
 `[NonSerialized]` on purpose — a public field would be copied into `Bootstrap.unity` and the
 scene would then silently outrank the code.
 
-Natural next parts, roughly in dependency order: more creature and hero kinds, which both
-catalogs are already shaped for; then verticality, which the 3D tile array is already shaped
-for.
+- **More kinds.** `CreatureKind` gained `Fly` and `Troll`, `HeroKind` gained `Thief`. The
+  portal rotates through `CreatureCatalog.All`; ordinary raids alternate knight and thief.
+  `HeroCatalog.Entry.FightsBack` is the whole of what makes a thief a different problem.
+
+Natural next part: verticality, which the 3D tile array is already shaped for.
 
 Watch out for: materials are created at runtime, so nothing in the project references a
 shader, so a build strips them all. `ProjectAutoSetup` keeps them in Always Included Shaders.

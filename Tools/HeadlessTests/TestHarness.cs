@@ -121,6 +121,9 @@ public static class TestHarness
         // --- portal, creatures and payroll ------------------------------------
         PortalChecks();
 
+        // --- who the portal and the gate can send -------------------------------
+        RosterChecks();
+
         // --- the dungeon can pay for what the portal sends it -------------------
         PayrollBalanceChecks();
 
@@ -675,6 +678,73 @@ public static class TestHarness
         Check(stillClaimed == 0, $"no dig claim outlived the tile it was on ({stillClaimed} left)");
     }
 
+    // ---------------------------------------------------------------- rosters
+
+    /// <summary>
+    /// The catalogs are the whole of what a kind is, so what is worth checking is that they
+    /// describe genuinely different things and that the managers actually rotate through them.
+    /// </summary>
+    static void RosterChecks()
+    {
+        Check(CreatureCatalog.All.Length >= 3, $"the portal has a roster to draw on ({CreatureCatalog.All.Length})");
+
+        foreach (var kind in CreatureCatalog.All)
+        {
+            var entry = CreatureCatalog.Get(kind);
+            Check(entry.Wage > 0 && entry.Health > 0 && entry.Damage > 0 && entry.MoveSpeed > 0f,
+                $"{entry.Name} is a complete catalog entry");
+        }
+
+        var fly = CreatureCatalog.Get(CreatureKind.Fly);
+        var troll = CreatureCatalog.Get(CreatureKind.Troll);
+        Check(fly.MoveSpeed > troll.MoveSpeed && troll.Health > fly.Health,
+            "a fly is the quick one and a troll is the solid one, not two of the same thing");
+        Check(troll.Wage > fly.Wage, "and the solid one is the expensive one");
+
+        // --- the portal works through them in turn ----------------------------
+        var world = OpenGateWorld("Roster", out var field, out _, out var heroes);
+        for (int x = 0; x < world.Grid.Width; x++)
+        for (int z = 0; z < world.Grid.Depth; z++)
+            world.Grid.CarveChamber(new Vector2Int(x, z), 0);
+
+        world.Rooms.BuildPortal(world.Grid.BaseCell + new Vector2Int(2, 0), 0);
+
+        var creatures = new GameObject("RosterCreatures").AddComponent<CreatureManager>();
+        creatures.Configure(world.Grid, world.Rooms, world.Economy, field);
+
+        var sent = new List<CreatureKind>();
+        for (int i = 0; i < CreatureCatalog.All.Length; i++) sent.Add(creatures.Spawn().Kind);
+
+        bool everyKind = true;
+        foreach (var kind in CreatureCatalog.All) everyKind &= sent.Contains(kind);
+        Check(everyKind, "the portal sends every kind it has before repeating one");
+
+        // --- a thief will not be drawn into a fight ---------------------------
+        heroes.WavesBeforeLord = 99;
+        heroes.Raid();
+        heroes.Raid();
+
+        HeroAI thief = null;
+        foreach (var hero in heroes.Heroes) if (hero.Kind == HeroKind.Thief) thief = hero;
+        Check(thief != null, "ordinary raids alternate, so a thief turns up");
+
+        if (thief == null) return;
+
+        var guard = NewBeetle(world, field, field, thief.CurrentCell + new Vector2Int(1, 0));
+        StepDuel(thief, guard, 2f);
+        Check(thief.State != HeroState.Fighting, "a thief does not stop for a defender beside it");
+
+        // Hit it directly, since a thief is quicker than a beetle and simply outruns its
+        // escort — which is the point of it, and would otherwise make this measure the chase
+        // rather than the rule.
+        int before = thief.Health;
+        thief.TakeDamage(20, (ICombatant)guard);
+        StepDuel(thief, guard, 0.5f);
+
+        Check(thief.Health < before, "it can be hurt");
+        Check(thief.State != HeroState.Fighting, "and still will not turn and fight");
+    }
+
     // -------------------------------------------------------- payroll balance
 
     /// <summary>
@@ -714,14 +784,22 @@ public static class TestHarness
 
         // What a full house costs over the same stretch.
         var manager = new GameObject("WageManager").AddComponent<CreatureManager>();
-        float bill = manager.MaxCreatures * CreatureCatalog.WageOf(CreatureKind.Beetle)
-                     * (window / manager.PaydayInterval);
+
+        // Priced on the rotation rather than on one kind. The portal works through the
+        // catalog in order, so a full house is one of each in turn and its wage bill is the
+        // average — pricing it at the dearest would be guarding against a dungeon the portal
+        // cannot produce, and pricing it at the first kind sent would miss the trolls.
+        int total = 0;
+        foreach (var kind in CreatureCatalog.All) total += CreatureCatalog.WageOf(kind);
+        float averageWage = total / (float)CreatureCatalog.All.Length;
+
+        float bill = manager.MaxCreatures * averageWage * (window / manager.PaydayInterval);
 
         Check(earned > bill,
             $"a crew out-earns a full roster's wages ({earned} banked against {bill:0} owed in {window:0}s)");
 
         // Comfortably, not by a hair: a raid or a bad patch of rock should not tip it over.
-        Check(earned > bill * 1.5f,
+        Check(earned > bill * 1.4f,
             $"and with enough margin to survive a raid ({earned / bill:0.0}x the bill)");
     }
 

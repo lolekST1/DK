@@ -124,7 +124,9 @@ namespace DK
 
             // Turn on whatever hit it, unless it is already carrying loot — then the gate
             // matters more than the fight, and it will only stop for whatever blocks the way.
-            if (IsAlive && CarriedGold <= 0 && from != null && from.IsAlive) Engage(from);
+            // A thief never turns at all: catching it is the whole problem it poses.
+            if (IsAlive && _stats.FightsBack && CarriedGold <= 0 && from != null && from.IsAlive)
+                Engage(from);
         }
 
         /// <summary>
@@ -342,7 +344,7 @@ namespace DK
 
         bool TryFindFight()
         {
-            if (_battlefield == null) return false;
+            if (_battlefield == null || !_stats.FightsBack) return false;
             if (!_battlefield.TryFindNearestEnemy(this, _stats.AlertRange, out var enemy)) return false;
 
             return Engage(enemy);
