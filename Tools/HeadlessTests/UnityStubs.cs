@@ -136,7 +136,7 @@ namespace UnityEngine
         public bool Raycast(Ray ray, out float distance) { distance = 0f; return true; }
     }
 
-    public enum KeyCode { Q, E, Escape, Alpha1, Alpha2, Alpha3, Alpha4 }
+    public enum KeyCode { Q, E, R, F1, Escape, Alpha1, Alpha2, Alpha3, Alpha4, Alpha5 }
 
     public enum PrimitiveType { Cube, Capsule, Cylinder, Sphere, Quad, Plane }
     public enum CameraClearFlags { SolidColor, Skybox }
@@ -318,6 +318,7 @@ namespace UnityEngine
     {
         public static float deltaTime = 1f / 60f;
         public static float timeScale = 1f;
+        public static float unscaledDeltaTime = 1f / 60f;
     }
     public static class Screen { public static int width => 0; public static int height => 0; public static float dpi => 0f; }
     public static class Application { public static bool isFocused => true;
@@ -369,12 +370,15 @@ namespace UnityEngine.SceneManagement
     {
         public bool IsValid() => true;
         public bool isLoaded => true;
+        public int buildIndex => 0;
         public int rootCount => 0;
         public GameObject[] GetRootGameObjects() => new GameObject[0];
     }
     public static class SceneManager
     {
         public static Scene GetSceneByPath(string path) => default;
+        public static Scene GetActiveScene() => default;
+        public static void LoadScene(int buildIndex) { }
         public static void MoveGameObjectToScene(GameObject go, Scene scene) { }
     }
 }

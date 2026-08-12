@@ -30,7 +30,12 @@ namespace DK
         /// </summary>
         public int MaxCreatures = 10;
 
-        public CreatureKind Kind = CreatureKind.Beetle;
+        /// <summary>
+        /// What the portal sends next. It rotates through the catalog rather than picking at
+        /// random, so a dungeon always gets the same mix in the same order — a garrison you
+        /// can plan around, and a raid you can reproduce when something goes wrong in it.
+        /// </summary>
+        public CreatureKind NextKind => CreatureCatalog.All[_spawnCounter % CreatureCatalog.All.Length];
 
         GridManager _grid;
         RoomManager _rooms;
@@ -187,15 +192,18 @@ namespace DK
         /// <summary>Puts one creature on the portal tile. Public so tests do not have to wait.</summary>
         public CreatureAI Spawn()
         {
-            var creature = BuildCreature(_spawnCounter++, _rooms.PortalCell);
+            var creature = BuildCreature(_spawnCounter, NextKind, _rooms.PortalCell);
+            _spawnCounter++;
             _creatures.Add(creature);
 
             CreatureArrived?.Invoke(creature);
             return creature;
         }
 
-        CreatureAI BuildCreature(int index, Vector2Int cell)
+        CreatureAI BuildCreature(int index, CreatureKind kind, Vector2Int cell)
         {
+            var stats = CreatureCatalog.Get(kind);
+
             var root = new GameObject($"Creature_{index}");
             root.transform.SetParent(_root, false);
 
@@ -203,13 +211,14 @@ namespace DK
             body.name = "Body";
             Destroy(body.GetComponent<Collider>());
             body.transform.SetParent(root.transform, false);
-            // Squat and wide, so a creature never gets mistaken for an imp at a glance.
-            body.transform.localScale = new Vector3(0.62f, 0.26f, 0.62f);
-            body.transform.localPosition = new Vector3(0f, 0.28f, 0f);
+            // Squat and wide, so a creature never gets mistaken for an imp at a glance, and
+            // sized off its health so the heavy ones read as heavy without a label.
+            float bulk = Mathf.Lerp(0.5f, 0.78f, Mathf.InverseLerp(40f, 130f, stats.Health));
+            body.transform.localScale = new Vector3(bulk, bulk * 0.42f, bulk);
+            body.transform.localPosition = new Vector3(0f, bulk * 0.45f, 0f);
 
             var renderer = body.GetComponent<Renderer>();
-            renderer.sharedMaterial = MaterialLibrary.CreateLit(
-                $"DK_Creature_{index}", CreatureCatalog.Get(Kind).Skin);
+            renderer.sharedMaterial = MaterialLibrary.CreateLit($"DK_Creature_{index}", stats.Skin);
 
             var shell = GameObject.CreatePrimitive(PrimitiveType.Cube);
             shell.name = "Shell";
@@ -221,7 +230,7 @@ namespace DK
                 MaterialLibrary.CreateLit("DK_CreatureShell", new Color(0.14f, 0.20f, 0.16f));
 
             var creature = root.AddComponent<CreatureAI>();
-            creature.Configure(_grid, _rooms, _battlefield, Kind, body.transform, renderer, cell);
+            creature.Configure(_grid, _rooms, _battlefield, _economy, kind, body.transform, renderer, cell);
             return creature;
         }
 

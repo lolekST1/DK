@@ -9,6 +9,7 @@ namespace DK
         Dig,
         BuildTreasury,
         BuildLair,
+        BuildTrainingRoom,
         Sell,
     }
 
@@ -111,7 +112,8 @@ namespace DK
             if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Escape)) SelectTool(PlayerTool.Dig);
             if (Input.GetKeyDown(KeyCode.Alpha2)) SelectTool(PlayerTool.BuildTreasury);
             if (Input.GetKeyDown(KeyCode.Alpha3)) SelectTool(PlayerTool.BuildLair);
-            if (Input.GetKeyDown(KeyCode.Alpha4)) SelectTool(PlayerTool.Sell);
+            if (Input.GetKeyDown(KeyCode.Alpha4)) SelectTool(PlayerTool.BuildTrainingRoom);
+            if (Input.GetKeyDown(KeyCode.Alpha5)) SelectTool(PlayerTool.Sell);
         }
 
         public void SelectTool(PlayerTool tool)
@@ -129,6 +131,7 @@ namespace DK
             {
                 case PlayerTool.BuildTreasury: return RoomType.Treasury;
                 case PlayerTool.BuildLair: return RoomType.Lair;
+                case PlayerTool.BuildTrainingRoom: return RoomType.TrainingRoom;
                 default: return RoomType.None;
             }
         }

@@ -38,6 +38,7 @@ namespace DK
         readonly List<Vector2Int> _storageTiles = new List<Vector2Int>();
         readonly List<Vector2Int> _lairTiles = new List<Vector2Int>();
         readonly List<Vector2Int> _portalTiles = new List<Vector2Int>();
+        readonly List<Vector2Int> _trainingTiles = new List<Vector2Int>();
         readonly List<Vector2Int> _heroGateTiles = new List<Vector2Int>();
 
         // Lair ownership is two-way so selling a tile can evict exactly one imp.
@@ -348,6 +349,9 @@ namespace DK
             }
 
             if (type == RoomType.Lair) _lairTiles.Add(cell);
+
+            if (type == RoomType.TrainingRoom) _trainingTiles.Add(cell);
+            if (previous == RoomType.TrainingRoom) _trainingTiles.Remove(cell);
             if (type == RoomType.Portal) _portalTiles.Add(cell);
             if (previous == RoomType.Portal) _portalTiles.Remove(cell);
 
@@ -525,6 +529,31 @@ namespace DK
             _workerLair.TryGetValue(worker, out var cell) && GetRoom(cell) == RoomType.Lair;
 
         public int LairCount => _lairTiles.Count;
+
+        public int TrainingCount => _trainingTiles.Count;
+
+        /// <summary>
+        /// Nearest training tile, or false when none is built. Unlike lairs these are not
+        /// claimed — a creature standing on one does not stop another joining it. One fewer
+        /// ownership layer, and a training room full of creatures is the right picture anyway.
+        /// </summary>
+        public bool TryFindTrainingTile(Vector2Int from, out Vector2Int cell)
+        {
+            cell = default;
+            int best = int.MaxValue;
+
+            for (int i = 0; i < _trainingTiles.Count; i++)
+            {
+                var candidate = _trainingTiles[i];
+                int distance = Mathf.Abs(candidate.x - from.x) + Mathf.Abs(candidate.y - from.y);
+                if (distance >= best) continue;
+
+                best = distance;
+                cell = candidate;
+            }
+
+            return best != int.MaxValue;
+        }
 
         /// <summary>
         /// Lair tiles nobody sleeps on. Only portal creatures take these — imps do not sleep,

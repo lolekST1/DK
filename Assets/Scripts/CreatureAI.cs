@@ -8,6 +8,7 @@ namespace DK
         GoingToLair,
         Sleeping,
         Wandering,
+        Training,
         Fighting,
         Leaving,
     }
@@ -49,7 +50,18 @@ namespace DK
 
         public int Health { get; private set; }
 
-        public int MaxHealth => _stats.Health;
+        /// <summary>Levels taken in a training room. Each one is worth
+        /// <see cref="CreatureCatalog.BonusPerLevel"/> of health and damage.</summary>
+        public int Level { get; private set; }
+
+        /// <summary>Seconds of training banked towards the next level.</summary>
+        public float TrainingProgress { get; private set; }
+
+        float LevelMultiplier => 1f + Level * CreatureCatalog.BonusPerLevel;
+
+        public int MaxHealth => Mathf.RoundToInt(_stats.Health * LevelMultiplier);
+
+        public int Damage => Mathf.RoundToInt(_stats.Damage * LevelMultiplier);
 
         public bool IsAlive => Health > 0;
 
@@ -66,6 +78,7 @@ namespace DK
         GridManager _grid;
         GridWalker _walker;
         Battlefield _battlefield;
+        ResourceManager _economy;
         ICombatant _enemy;
         RoomManager _rooms;
         Renderer _bodyRenderer;
@@ -84,16 +97,23 @@ namespace DK
 
         static int _spawnOrder;
 
+        /// <summary>
+        /// Called when a run restarts. The counter seeds wandering, and leaving it running
+        /// across a scene reload would make two runs of the same map differ for no reason.
+        /// </summary>
+        public static void ResetSpawnOrder() => _spawnOrder = 0;
+
         static readonly Color CalmTint = new Color(1f, 1f, 1f);
         static readonly Color FuriousTint = new Color(1.6f, 0.55f, 0.45f);
 
         public void Configure(GridManager grid, RoomManager rooms, Battlefield battlefield,
-                              CreatureKind kind, Transform body, Renderer bodyRenderer,
-                              Vector2Int spawnCell)
+                              ResourceManager economy, CreatureKind kind, Transform body,
+                              Renderer bodyRenderer, Vector2Int spawnCell)
         {
             _grid = grid;
             _rooms = rooms;
             _battlefield = battlefield;
+            _economy = economy;
             Kind = kind;
             _stats = CreatureCatalog.Get(kind);
             _body = body;
@@ -111,7 +131,7 @@ namespace DK
                 TurnSpeed = TurnSpeed,
             };
 
-            Health = _stats.Health;
+            Health = MaxHealth;
             if (_battlefield != null) _battlefield.Register(this);
 
             // Derived from the spawn, not from GetHashCode. Object hash codes are not
@@ -192,6 +212,9 @@ namespace DK
                 case CreatureState.Wandering:
                     TickWandering(dt);
                     break;
+                case CreatureState.Training:
+                    TickTraining(dt);
+                    break;
                 case CreatureState.Fighting:
                     TickFighting(dt);
                     break;
@@ -265,6 +288,11 @@ namespace DK
                 }
             }
 
+            // Training comes after sleep and before idling about: a creature with a bed and no
+            // raid to answer has nothing better to do, and the room is what turns gold into a
+            // garrison that can hold rather than merely one that is large.
+            if (TrySelectTraining()) return;
+
             if (TryPickWanderTarget()) State = CreatureState.Wandering;
         }
 
@@ -315,6 +343,56 @@ namespace DK
             Health = Mathf.Min(_stats.Health, Health + whole);
         }
 
+        void TickTraining(float dt)
+        {
+            if (TryFindFight()) return;
+
+            // Sleep wins: a tired creature trains badly and the lair is what fixes that.
+            if (Fatigue >= 1f && HasLair)
+            {
+                State = CreatureState.Idle;
+                _decisionCooldown = 0f;
+                return;
+            }
+
+            if (_walker.Advance(dt)) return;
+
+            if (Level >= CreatureCatalog.MaxLevel || _rooms == null ||
+                _rooms.GetRoom(CurrentCell) != RoomType.TrainingRoom)
+            {
+                State = CreatureState.Idle;
+                _decisionCooldown = 0f;
+                return;
+            }
+
+            TrainingProgress += dt;
+            if (TrainingProgress < CreatureCatalog.SecondsPerLevel) return;
+
+            // The level is paid for on the spot. A dungeon that cannot afford it keeps the
+            // progress and tries again, so training stalls rather than being lost.
+            if (_economy != null && !_economy.TrySpend(CreatureCatalog.GoldPerLevel)) return;
+
+            TrainingProgress = 0f;
+            Level++;
+
+            // Levels raise the ceiling, not the current wound: a creature trains back to full
+            // only by sleeping, which is the lair's job.
+            Health = Mathf.Min(MaxHealth, Health + Mathf.RoundToInt(_stats.Health * CreatureCatalog.BonusPerLevel));
+        }
+
+        /// <summary>Heads for the nearest training room, when there is one and it is worth it.</summary>
+        bool TrySelectTraining()
+        {
+            if (_rooms == null || Level >= CreatureCatalog.MaxLevel) return false;
+            if (_economy != null && _economy.Gold < CreatureCatalog.GoldPerLevel) return false;
+            if (!_rooms.TryFindTrainingTile(CurrentCell, out var cell)) return false;
+
+            if (CurrentCell != cell && !_walker.SetPath(cell)) return false;
+
+            State = CreatureState.Training;
+            return true;
+        }
+
         void TickWandering(float dt)
         {
             if (TryFindFight()) return;
@@ -361,7 +439,7 @@ namespace DK
                 if (_swingTimer > 0f) return;
 
                 _swingTimer = _stats.AttackInterval;
-                _enemy.TakeDamage(_stats.Damage, this);
+                _enemy.TakeDamage(Damage, this);
                 return;
             }
 
@@ -465,7 +543,7 @@ namespace DK
             }
 
             bool moving = State == CreatureState.Wandering || State == CreatureState.GoingToLair ||
-                          State == CreatureState.Leaving;
+                          State == CreatureState.Training || State == CreatureState.Leaving;
 
             if (moving) _bobPhase += dt * 7f;
             else _bobPhase = Mathf.MoveTowards(_bobPhase, 0f, dt * 4f);

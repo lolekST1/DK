@@ -30,12 +30,15 @@ when the vault cannot cover the next tile.
 | `1` / `Esc` | Dig tool (default) |
 | `2` | Build treasury — 50 gold a tile, holds 250 |
 | `3` | Build lair — 100 gold a tile, houses one creature |
-| `4` | Sell tool — tears a room out for half its cost |
+| `4` | Build training room — 120 gold a tile, plus 40 per level taken |
+| `5` | Sell tool — tears a room out for half its cost |
 | Left mouse (hold to paint) | Apply the selected tool |
 | Right mouse (hold to paint) | Undo it: unmark while digging, sell while building |
 | WASD, arrow keys, or screen edge | Pan the camera |
 | Q / E (hold) | Swing the camera round, any angle |
 | Scroll wheel | Zoom |
+| `R` | Start again, once the run has ended |
+| `F1` | Render and camera stats, for diagnosing a build |
 
 The cursor turns green where the selected room will go and red where it will not; the HUD
 status line says why. It shows one thing at a time, the most urgent first: payroll it cannot
@@ -51,6 +54,12 @@ starts collecting while the others carry on. Gold only counts once it is walked 
 so the heart fills up fast and you have to spend your opening 100 gold on a treasury. Piles you
 have nowhere to store just stay on the floor until you build one. Build a lair and the portal can
 send another creature to fill it; imps do not sleep and never take one.
+
+The portal works through its roster in turn — a fly, a beetle, a troll, and round again. A fly
+is cheap and reaches a fight while the others are still crossing the map; a troll costs three
+times as much, holds a corridor, and sleeps through a good deal of the run. The rotation is
+fixed rather than random, so a garrison is something you can plan and a raid is something you
+can reproduce.
 
 The portal sits in a sealed cavern three quarters of the way across the map. Dig a route to it
 and creatures start arriving — but only while a lair is standing empty, so housing is a real
@@ -87,7 +96,7 @@ Assets/Scripts/
   RoomManager.cs      Rooms on top of terrain: heart, vault gold, lair ownership, slabs
   RoomCatalog.cs      Cost / capacity / colour per room type — the whole economy balance
   LooseGold.cs        Gold dropped on the floor: piles, per-pile claims, pickup
-  RoomType.cs         None / DungeonHeart / Treasury / Lair / Portal / HeroGate
+  RoomType.cs         None / DungeonHeart / Treasury / Lair / TrainingRoom / Portal / HeroGate
   DungeonHeart.cs     The thing there is to lose: health, damage tint, destruction
   GameDirector.cs     Watches for the two endings and stops the world
   Battlefield.cs      Combatant roster and "who is near enough to hit"
@@ -113,11 +122,26 @@ Assets/Settings/      URP pipeline and renderer assets, created on first Editor 
 Tools/HeadlessTests/  Unity-free smoke test of the dig loop
 ```
 
+### Training
+
+A creature with a bed, no raid to answer and a training room to stand in will train in it: 20
+seconds and 40 gold a level, four levels, each worth 20% more health and damage. A creature at
+the cap hits about twice as hard as one that arrived yesterday.
+
+Levels do **not** raise wages. Training is a capital cost, paid once, because a creature that
+grew more expensive to keep every time it improved would make the room a trap rather than a
+choice — and the payroll balance the dungeon was built around would move under the player's
+feet. It is the only thing in the game that turns gold into a stronger garrison rather than a
+larger one.
+
 ### Raids
 
 A hero gate sits sealed in the opposite corner from the portal. Dig through to it and raids
-start after a grace period: a knight walks in, makes for the nearest vault tile with gold on
-it, takes what it can carry and heads back to the gate.
+start after a grace period, alternating between two problems. A **knight** walks in, makes for
+the nearest vault tile with gold on it, takes what it can carry and fights whatever meets him.
+A **thief** is quicker than anything you can house except a fly, carries far more, and will not
+turn and fight even when hit — it has to be cut off rather than answered. A dungeon that only
+solves one of them loses to the other.
 
 Creatures answer a raid from anywhere in the dungeon, breaking off whatever they were doing and
 waking up for it if they were asleep. One beetle loses to a knight but leaves it under half
@@ -247,7 +271,12 @@ you kill the thief in time, and it needs no new UI at all.
 **The run ends by stopping the clock.** `GameDirector` sets the timescale to zero and puts the
 result in the status line. Disabling every AI in the scene would have been the tidier-sounding
 option and would silently miss whatever gets added next; a frozen dungeon behind the verdict is
-also the right picture of what just happened. There is no restart yet — press Play again.
+also the right picture of what just happened.
+
+**Restarting is a scene reload.** Everything — managers, rooms, creatures, materials — is built
+in `GameBootstrap.Awake`, so there is no state to unwind by hand and nothing to keep in step
+with what gets added later. `R` puts the timescale back and reloads. The HUD runs on unscaled
+time so it keeps refreshing while the world is stopped.
 
 **Neither side knows the other exists.** `CreatureAI` and `HeroAI` never reference each other —
 they ask `Battlefield` for the nearest enemy and get an `ICombatant` back. One place decides
@@ -348,8 +377,17 @@ It type-checks every script against stub Unity types, then runs the real `GridMa
   hands it over, and an empty tile cannot be claimed at all.
 - **Payroll balance** — the one balance figure that can be checked rather than eyeballed. A
   crew of six digs for two simulated minutes, and what they bank has to beat the wage bill for
-  a full house over the same stretch, with half again on top so a raid does not tip it over.
-  It fails at the old numbers.
+  a full house over the same stretch with room to spare. Priced on the portal's rotation, since
+  that is what decides the bill. It caught the troll's first wage, which a full roster could
+  not have paid.
+- **Training** — a creature arrives at exactly its catalog numbers, goes and trains, the level
+  is charged to the vault, the numbers go up, it stops at the cap and stays there, and a
+  dungeon with no gold trains nobody and does not leave a creature standing in the room
+  waiting. The first version of this test was simply underfunded — the heart holds 225 and the
+  room plus four levels does not fit in that — which the game refused correctly.
+- **Rosters** — every catalog entry is complete, a fly and a troll are genuinely different
+  things rather than two of the same, the portal sends every kind before repeating one, and a
+  thief neither seeks a fight nor turns for one when hit.
 - **The last stand** — the fight the whole economy pays for, measured rather than reasoned
   about. Four to nine defenders, bunched at the heart or ringed twelve tiles out, with and
   without three knights still inside, plus what a single beetle is worth fed to him alone. Four

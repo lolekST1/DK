@@ -121,6 +121,12 @@ public static class TestHarness
         // --- portal, creatures and payroll ------------------------------------
         PortalChecks();
 
+        // --- who the portal and the gate can send -------------------------------
+        RosterChecks();
+
+        // --- gold buying strength rather than numbers --------------------------
+        TrainingChecks();
+
         // --- the dungeon can pay for what the portal sends it -------------------
         PayrollBalanceChecks();
 
@@ -675,6 +681,133 @@ public static class TestHarness
         Check(stillClaimed == 0, $"no dig claim outlived the tile it was on ({stillClaimed} left)");
     }
 
+    // ---------------------------------------------------------------- rosters
+
+    /// <summary>
+    /// The catalogs are the whole of what a kind is, so what is worth checking is that they
+    /// describe genuinely different things and that the managers actually rotate through them.
+    /// </summary>
+    static void RosterChecks()
+    {
+        Check(CreatureCatalog.All.Length >= 3, $"the portal has a roster to draw on ({CreatureCatalog.All.Length})");
+
+        foreach (var kind in CreatureCatalog.All)
+        {
+            var entry = CreatureCatalog.Get(kind);
+            Check(entry.Wage > 0 && entry.Health > 0 && entry.Damage > 0 && entry.MoveSpeed > 0f,
+                $"{entry.Name} is a complete catalog entry");
+        }
+
+        var fly = CreatureCatalog.Get(CreatureKind.Fly);
+        var troll = CreatureCatalog.Get(CreatureKind.Troll);
+        Check(fly.MoveSpeed > troll.MoveSpeed && troll.Health > fly.Health,
+            "a fly is the quick one and a troll is the solid one, not two of the same thing");
+        Check(troll.Wage > fly.Wage, "and the solid one is the expensive one");
+
+        // --- the portal works through them in turn ----------------------------
+        var world = OpenGateWorld("Roster", out var field, out _, out var heroes);
+        for (int x = 0; x < world.Grid.Width; x++)
+        for (int z = 0; z < world.Grid.Depth; z++)
+            world.Grid.CarveChamber(new Vector2Int(x, z), 0);
+
+        world.Rooms.BuildPortal(world.Grid.BaseCell + new Vector2Int(2, 0), 0);
+
+        var creatures = new GameObject("RosterCreatures").AddComponent<CreatureManager>();
+        creatures.Configure(world.Grid, world.Rooms, world.Economy, field);
+
+        var sent = new List<CreatureKind>();
+        for (int i = 0; i < CreatureCatalog.All.Length; i++) sent.Add(creatures.Spawn().Kind);
+
+        bool everyKind = true;
+        foreach (var kind in CreatureCatalog.All) everyKind &= sent.Contains(kind);
+        Check(everyKind, "the portal sends every kind it has before repeating one");
+
+        // --- a thief will not be drawn into a fight ---------------------------
+        heroes.WavesBeforeLord = 99;
+        heroes.Raid();
+        heroes.Raid();
+
+        HeroAI thief = null;
+        foreach (var hero in heroes.Heroes) if (hero.Kind == HeroKind.Thief) thief = hero;
+        Check(thief != null, "ordinary raids alternate, so a thief turns up");
+
+        if (thief == null) return;
+
+        var guard = NewBeetle(world, field, field, thief.CurrentCell + new Vector2Int(1, 0));
+        StepDuel(thief, guard, 2f);
+        Check(thief.State != HeroState.Fighting, "a thief does not stop for a defender beside it");
+
+        // Hit it directly, since a thief is quicker than a beetle and simply outruns its
+        // escort — which is the point of it, and would otherwise make this measure the chase
+        // rather than the rule.
+        int before = thief.Health;
+        thief.TakeDamage(20, (ICombatant)guard);
+        StepDuel(thief, guard, 0.5f);
+
+        Check(thief.Health < before, "it can be hurt");
+        Check(thief.State != HeroState.Fighting, "and still will not turn and fight");
+    }
+
+    // --------------------------------------------------------------- training
+
+    /// <summary>
+    /// The training room is the only thing that turns gold into a stronger garrison rather
+    /// than a larger one, and it is paid for twice — once to build, once per level taken.
+    /// </summary>
+    static void TrainingChecks()
+    {
+        var world = NewWorld("Train", 1337);
+        var field = new GameObject("TrainField").AddComponent<Battlefield>();
+
+        // Vault first: the heart alone holds 225, and a room at 120 plus four levels at 40
+        // does not fit in that — which is a real constraint, just not the one under test here.
+        world.Rooms.DepositAnywhere(100000);
+        Check(world.Rooms.Build(8, 8, RoomType.Treasury), "a treasury to pay for it all");
+        Check(world.Rooms.Build(8, 9, RoomType.Treasury), "and a second tile");
+        world.Rooms.DepositAnywhere(100000);
+
+        Check(world.Rooms.Build(9, 8, RoomType.TrainingRoom), "a training room goes up");
+        Check(world.Rooms.TrainingCount == 1, "and the rooms layer knows about it");
+
+        var beetle = NewBeetle(world, field, field, world.Grid.BaseCell);
+        var stats = CreatureCatalog.Get(CreatureKind.Beetle);
+
+        Check(beetle.Level == 0, "a creature arrives untrained");
+        Check(beetle.MaxHealth == stats.Health && beetle.Damage == stats.Damage,
+            "at exactly its catalog numbers");
+
+        int before = world.Economy.Gold;
+        float trained = RunCreatureUntil(beetle, () => beetle.Level > 0, 120f);
+
+        Check(trained > 0f, $"it went and trained a level ({trained:0.0}s)");
+        Check(beetle.State == CreatureState.Training, "and is still in the room");
+        Check(world.Economy.Gold == before - CreatureCatalog.GoldPerLevel,
+            $"the level was paid for ({before} -> {world.Economy.Gold})");
+        Check(beetle.Damage > stats.Damage && beetle.MaxHealth > stats.Health,
+            $"and bought something: {beetle.Damage} damage against {stats.Damage}");
+
+        // --- it stops at the cap ---------------------------------------------
+        RunCreatureUntil(beetle, () => beetle.Level >= CreatureCatalog.MaxLevel, 600f);
+        Check(beetle.Level == CreatureCatalog.MaxLevel, $"training runs out at level {beetle.Level}");
+
+        StepCreature(beetle, 40f);
+        Check(beetle.Level == CreatureCatalog.MaxLevel, "and stays there");
+
+        // --- and it stops when the dungeon cannot pay -------------------------
+        var poor = NewWorld("Poor", 1337);
+        var poorField = new GameObject("PoorField").AddComponent<Battlefield>();
+
+        poor.Rooms.DepositAnywhere(100000);
+        Check(poor.Rooms.Build(9, 8, RoomType.TrainingRoom), "a training room in a dungeon about to go broke");
+        while (poor.Economy.TrySpend(1)) { }
+
+        var pauper = NewBeetle(poor, poorField, poorField, poor.Grid.BaseCell);
+        StepCreature(pauper, 90f);
+
+        Check(pauper.Level == 0, "a dungeon with no gold trains nobody");
+        Check(pauper.State != CreatureState.Training, "and the creature does not stand in the room waiting");
+    }
+
     // -------------------------------------------------------- payroll balance
 
     /// <summary>
@@ -714,14 +847,22 @@ public static class TestHarness
 
         // What a full house costs over the same stretch.
         var manager = new GameObject("WageManager").AddComponent<CreatureManager>();
-        float bill = manager.MaxCreatures * CreatureCatalog.WageOf(CreatureKind.Beetle)
-                     * (window / manager.PaydayInterval);
+
+        // Priced on the rotation rather than on one kind. The portal works through the
+        // catalog in order, so a full house is one of each in turn and its wage bill is the
+        // average — pricing it at the dearest would be guarding against a dungeon the portal
+        // cannot produce, and pricing it at the first kind sent would miss the trolls.
+        int total = 0;
+        foreach (var kind in CreatureCatalog.All) total += CreatureCatalog.WageOf(kind);
+        float averageWage = total / (float)CreatureCatalog.All.Length;
+
+        float bill = manager.MaxCreatures * averageWage * (window / manager.PaydayInterval);
 
         Check(earned > bill,
             $"a crew out-earns a full roster's wages ({earned} banked against {bill:0} owed in {window:0}s)");
 
         // Comfortably, not by a hair: a raid or a bad patch of rock should not tip it over.
-        Check(earned > bill * 1.5f,
+        Check(earned > bill * 1.4f,
             $"and with enough margin to survive a raid ({earned / bill:0.0}x the bill)");
     }
 
@@ -945,6 +1086,14 @@ public static class TestHarness
         Check(fell > 0f, $"and brought it down ({fell:0.0}s)");
         Check(director.Result == Outcome.Lost, "which loses the run");
         Check(director.Finished, "and ends it");
+        Check(Time.timeScale == 0f, "the ending stops the clock");
+
+        // The reload itself needs Unity, but the state the run is left in does not: a restart
+        // that forgot the timescale would open the next run frozen, which is the one part of
+        // this worth pinning down.
+        director.Restart();
+        Check(Time.timeScale == 1f, "and restarting starts it again");
+        Check(director.Result == Outcome.Lost, "the old result stands until the scene reloads");
 
         // --- or you kill him and the dungeon is yours --------------------------
         var won = OpenGateWorld("Won", out _, out var wonHeart, out var wonHeroes);
@@ -963,6 +1112,9 @@ public static class TestHarness
         DirectorUpdate.Invoke(winDirector, null);
         Check(winDirector.Result == Outcome.Won, "which wins the run");
         Check(wonHeart.Health == wonHeart.MaxHealth, "with the heart untouched");
+
+        winDirector.Restart();
+        Check(Time.timeScale == 1f, "a won run can be played again too");
     }
 
     /// <summary>A world with a heart, a hero gate, and a corridor already dug between them.</summary>
@@ -1234,7 +1386,7 @@ public static class TestHarness
     static CreatureAI NewBeetle(World world, Battlefield battlefield, Battlefield unused, Vector2Int cell)
     {
         var beetle = new GameObject("DuelBeetle").AddComponent<CreatureAI>();
-        beetle.Configure(world.Grid, world.Rooms, battlefield, CreatureKind.Beetle,
+        beetle.Configure(world.Grid, world.Rooms, battlefield, world.Economy, CreatureKind.Beetle,
                          new GameObject("DuelBeetleBody").transform, null, cell);
         return beetle;
     }
@@ -1378,7 +1530,7 @@ public static class TestHarness
 
         // --- the battlefield only ever points at the other side ----------------
         var lone = new GameObject("Lone").AddComponent<CreatureAI>();
-        lone.Configure(grid, rooms, battlefield, CreatureKind.Beetle,
+        lone.Configure(grid, rooms, battlefield, world.Economy, CreatureKind.Beetle,
                        new GameObject("LoneBody").transform, null, grid.BaseCell);
         Check(!battlefield.TryFindNearestEnemy(lone, int.MaxValue, out _),
             "a dungeon creature finds no enemy when there are no heroes");

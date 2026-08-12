@@ -143,17 +143,22 @@ tile claim in the same step and is easier to read as one piece.
   and nowhere else. A creature under half health goes to bed unprompted. Before this, damage was
   permanent and the garrison was worn down over the knight waves with no way back.
 
-Known gap: there is no restart after the run ends — the timescale stays at zero until the
-scene is reloaded.
-
 Balance figures worth knowing: a full roster's wages have to stay under what a crew of imps
 can mine, and `PayrollBalanceChecks` in the harness asserts it. `GameBootstrap`'s tunables are
 `[NonSerialized]` on purpose — a public field would be copied into `Bootstrap.unity` and the
 scene would then silently outrank the code.
 
-Natural next parts, roughly in dependency order: a restart, which the endings now need; more
-creature and hero kinds, which both catalogs are already shaped for; then verticality, which
-the 3D tile array is already shaped for.
+- **More kinds.** `CreatureKind` gained `Fly` and `Troll`, `HeroKind` gained `Thief`. The
+  portal rotates through `CreatureCatalog.All`; ordinary raids alternate knight and thief.
+  `HeroCatalog.Entry.FightsBack` is the whole of what makes a thief a different problem.
+
+- **The training room.** `RoomType.TrainingRoom`, `CreatureState.Training`, and levels that
+  add 20% health and damage each for 40 gold and 20 seconds, capped at four. Deliberately not
+  a wage increase: training is a capital cost, so the payroll balance stays where it was.
+
+Verticality was considered and dropped: doing it properly means `Vector2Int` becoming
+`Vector3Int` across every file, and the terrain-elevation version that keeps 2D coordinates
+buys visual depth rather than the stacked floors the original has. Not worth either price yet.
 
 Watch out for: materials are created at runtime, so nothing in the project references a
 shader, so a build strips them all. `ProjectAutoSetup` keeps them in Always Included Shaders.

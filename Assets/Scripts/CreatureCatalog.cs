@@ -5,6 +5,8 @@ namespace DK
     public enum CreatureKind
     {
         Beetle = 0,
+        Fly,
+        Troll,
     }
 
     /// <summary>
@@ -14,6 +16,23 @@ namespace DK
     /// </summary>
     public static class CreatureCatalog
     {
+        /// <summary>
+        /// What one level in the training room adds to health and damage, as a fraction. Not
+        /// to wages: training is a capital cost, paid once per level, and a creature that grew
+        /// more expensive to keep every time it improved would make the room a trap rather
+        /// than a choice.
+        /// </summary>
+        public const float BonusPerLevel = 0.2f;
+
+        /// <summary>Gold the dungeon pays each time a creature takes a level.</summary>
+        public const int GoldPerLevel = 40;
+
+        /// <summary>Seconds of standing in the room per level.</summary>
+        public const float SecondsPerLevel = 20f;
+
+        /// <summary>Levels a creature can take. Four fights like two of itself.</summary>
+        public const int MaxLevel = 4;
+
         public struct Entry
         {
             public string Name;
@@ -70,10 +89,70 @@ namespace DK
             public Color Skin;
         }
 
+        /// <summary>Everything the portal can send, in the order it sends them.</summary>
+        public static readonly CreatureKind[] All =
+        {
+            CreatureKind.Fly,
+            CreatureKind.Beetle,
+            CreatureKind.Troll,
+        };
+
         public static Entry Get(CreatureKind kind)
         {
             switch (kind)
             {
+                case CreatureKind.Fly:
+                    return new Entry
+                    {
+                        Name = "Fly",
+                        Wage = 10,
+                        MoveSpeed = 3.4f,
+
+                        // Cheap and quick to the fight, which is most of what it is for: it
+                        // reaches a raid while the heavier things are still crossing the map.
+                        FatiguePerSecond = 1f / 70f,
+                        RestPerSecond = 1f / 12f,
+
+                        HomelessAngerPerSecond = 1f / 120f,
+                        AngerPerMissedWage = 0.34f,
+                        CalmPerSecond = 1f / 30f,
+
+                        Health = 40,
+                        Damage = 5,
+                        AttackInterval = 0.8f,
+                        AlertRange = 64,
+
+                        Skin = new Color(0.62f, 0.68f, 0.78f),
+                    };
+
+                case CreatureKind.Troll:
+                    return new Entry
+                    {
+                        Name = "Troll",
+
+                        // Dear, but not so dear that a full house of them outruns the digging:
+                        // PayrollBalanceChecks prices a roster on the portal's rotation, and
+                        // 35 put the average past what six imps can mine.
+                        Wage = 30,
+                        MoveSpeed = 1.8f,
+
+                        // Sleeps hard and often. The cost of the thing that actually holds a
+                        // corridor is that it is not always awake in it.
+                        FatiguePerSecond = 1f / 70f,
+                        RestPerSecond = 1f / 20f,
+
+                        HomelessAngerPerSecond = 1f / 120f,
+                        AngerPerMissedWage = 0.34f,
+                        CalmPerSecond = 1f / 30f,
+
+                        Health = 130,
+                        Damage = 12,
+                        AttackInterval = 1.4f,
+                        AlertRange = 64,
+
+                        Skin = new Color(0.34f, 0.40f, 0.26f),
+                    };
+
                 default:
                     return new Entry
                     {

@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DK
 {
@@ -21,6 +22,9 @@ namespace DK
     /// </summary>
     public class GameDirector : MonoBehaviour
     {
+        /// <summary>Starts the run again once it has ended.</summary>
+        public KeyCode RestartKey = KeyCode.R;
+
         public Outcome Result { get; private set; } = Outcome.Playing;
 
         public bool Finished => Result != Outcome.Playing;
@@ -49,11 +53,29 @@ namespace DK
 
         void Update()
         {
-            if (Finished) return;
+            if (Finished)
+            {
+                if (Input.GetKeyDown(RestartKey)) Restart();
+                return;
+            }
 
             // Losing is event-driven; winning is a state nobody raises an event for, because
             // the Lord is just another hero as far as the roster is concerned.
             if (_heroes != null && _heroes.LordDefeated) Finish(Outcome.Won);
+        }
+
+        /// <summary>
+        /// Reloads the scene, which is the whole restart: every manager, room, creature and
+        /// material is built in <see cref="GameBootstrap"/>'s Awake, so there is no state to
+        /// unwind by hand. The timescale has to go back first — the scene loads either way,
+        /// but the new run would open frozen.
+        /// </summary>
+        public void Restart()
+        {
+            Time.timeScale = 1f;
+            CreatureAI.ResetSpawnOrder();
+
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
 
         void OnHeartDestroyed() => Finish(Outcome.Lost);

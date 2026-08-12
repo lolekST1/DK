@@ -10,6 +10,7 @@ namespace DK
         DungeonHeart,
         Treasury,
         Lair,
+        TrainingRoom,
         Portal,
         HeroGate,
     }

@@ -32,7 +32,11 @@ namespace DK
         /// </summary>
         public int WavesBeforeLord = 5;
 
-        public HeroKind Kind = HeroKind.Knight;
+        /// <summary>
+        /// Ordinary raids alternate. A knight has to be beaten and a thief has to be caught,
+        /// so a dungeon that only answers one of them loses to the other.
+        /// </summary>
+        static readonly HeroKind[] RaidOrder = { HeroKind.Knight, HeroKind.Thief };
 
         GridManager _grid;
         RoomManager _rooms;
@@ -153,7 +157,7 @@ namespace DK
             // The last wave is one Lord, on his own. He is not a bigger knight and does not
             // need an escort — he walks past the vault and goes for the heart.
             bool lord = !LordSent && WavesSent >= WavesBeforeLord;
-            var kind = lord ? HeroKind.Lord : Kind;
+            var kind = lord ? HeroKind.Lord : RaidOrder[WavesSent % RaidOrder.Length];
             int count = lord ? 1 : RaidSize;
 
             WavesSent++;
@@ -182,11 +186,17 @@ namespace DK
 
             var stats = HeroCatalog.Get(kind);
 
-            // The Lord stands a head above the knights, so the last wave is unmistakable.
+            // The Lord stands a head above the knights, so the last wave is unmistakable, and
+            // a thief is slighter than either.
             if (stats.GoesForTheHeart)
             {
                 body.transform.localScale = new Vector3(0.52f, 0.52f, 0.52f);
                 body.transform.localPosition = new Vector3(0f, 0.52f, 0f);
+            }
+            else if (!stats.FightsBack)
+            {
+                body.transform.localScale = new Vector3(0.36f, 0.38f, 0.36f);
+                body.transform.localPosition = new Vector3(0f, 0.38f, 0f);
             }
 
             var renderer = body.GetComponent<Renderer>();

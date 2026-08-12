@@ -65,6 +65,19 @@ namespace DK
                         FloorColor = new Color(0.26f, 0.16f, 0.34f),
                     };
 
+                case RoomType.TrainingRoom:
+                    return new Entry
+                    {
+                        Name = "Training Room",
+                        Hotkey = "4",
+                        // Dearer per tile than a lair, and it has to be paid for twice: once to
+                        // build and again for every level a creature takes in it.
+                        CostPerTile = 120,
+                        GoldCapacityPerTile = 0,
+                        PlayerBuildable = true,
+                        FloorColor = new Color(0.20f, 0.30f, 0.36f),
+                    };
+
                 case RoomType.Portal:
                     return new Entry
                     {
